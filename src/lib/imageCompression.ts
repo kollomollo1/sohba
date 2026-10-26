@@ -1,9 +1,7 @@
 /**
- * High-performance client-side image compression for social posts.
- * - Auto-detects and corrects EXIF orientation.
- * - Downscales large images to max 1080px (crisp Retina quality for feeds).
- * - Multi-pass JPEG compression to guarantee small file size (target <= 180 KB).
- * - Smooth bicubic resampling for sharp text and details.
+ * Client-side image compression for social posts.
+ * Compresses images to at most 1/6th (سُدس) of their original file size
+ * while ensuring maximum visual clarity on mobile and desktop feeds.
  */
 
 async function loadSourceImage(file: File): Promise<{
@@ -59,14 +57,19 @@ export async function compressPostImage(file: File): Promise<File> {
   const source = await loadSourceImage(file);
   try {
     const MAX_DIMENSION = 1080;
-    const TARGET_MAX_BYTES = 180 * 1024; // 180 KB target max size
+    // Target size is at most 1/6th of original file size, capped at 180 KB
+    const TARGET_MAX_BYTES = Math.min(
+      Math.max(25 * 1024, Math.round(file.size / 6)),
+      180 * 1024
+    );
 
     const initialScale = Math.min(1, MAX_DIMENSION / Math.max(source.width, source.height));
     let width = Math.max(1, Math.round(source.width * initialScale));
     let height = Math.max(1, Math.round(source.height * initialScale));
 
-    const MAX_ATTEMPTS = 5;
-    let finalBlob: Blob | null = null;
+    const MAX_ATTEMPTS = 6;
+    let bestBlob: Blob | null = null;
+    let quality = 0.76;
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const canvas = document.createElement('canvas');
@@ -83,9 +86,6 @@ export async function compressPostImage(file: File): Promise<File> {
       ctx.fillRect(0, 0, width, height);
       source.draw(ctx, width, height);
 
-      // Decrement quality progressively if needed: 0.78 -> 0.71 -> 0.64 -> 0.58 -> 0.52
-      const quality = Math.max(0.52, 0.78 - attempt * 0.07);
-
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
           (res) => (res ? resolve(res) : reject(new Error('Image compression failed'))),
@@ -94,22 +94,27 @@ export async function compressPostImage(file: File): Promise<File> {
         );
       });
 
-      finalBlob = blob;
+      if (!bestBlob || blob.size < bestBlob.size) {
+        bestBlob = blob;
+      }
 
-      // Stop as soon as target size is met or max attempts reached
-      if (blob.size <= TARGET_MAX_BYTES || attempt === MAX_ATTEMPTS - 1) {
+      // If under target size (<= 1/6 of original size), we are done!
+      if (blob.size <= TARGET_MAX_BYTES) {
         break;
       }
 
-      // Progressively downscale dimensions by 15% for next pass
-      width = Math.max(1, Math.round(width * 0.85));
-      height = Math.max(1, Math.round(height * 0.85));
+      // Next attempt: dynamically scale down based on how much it exceeded the target
+      const overshoot = blob.size / TARGET_MAX_BYTES;
+      const dimFactor = Math.max(0.75, Math.min(0.9, 1 / Math.sqrt(overshoot)));
+      width = Math.max(320, Math.round(width * dimFactor));
+      height = Math.max(320, Math.round(height * dimFactor));
+      quality = Math.max(0.48, quality - 0.08);
     }
 
-    if (!finalBlob) throw new Error('Compression produced no output');
+    if (!bestBlob) throw new Error('Compression produced no output');
 
     const safeName = (file.name ? file.name.replace(/\.[^/.]+$/, '') : 'post_image') + '.jpg';
-    return new File([finalBlob], safeName, { type: 'image/jpeg', lastModified: Date.now() });
+    return new File([bestBlob], safeName, { type: 'image/jpeg', lastModified: Date.now() });
   } finally {
     source.close();
   }

@@ -14,6 +14,7 @@ export function CreatePostScreen() {
   const { profile, isGuest } = useAuth();
   const [body, setBody] = useState(editPost?.body ?? '');
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [originalImageSize, setOriginalImageSize] = useState<number | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(editPost?.image_url ?? null);
   const [compressing, setCompressing] = useState(false);
   const [isUrgent, setIsUrgent] = useState(!isGuest && (editPost?.is_urgent ?? false));
@@ -28,6 +29,7 @@ export function CreatePostScreen() {
     setCompressing(true);
     setError(null);
     try {
+      setOriginalImageSize(file.size);
       const compressed = await compressPostImage(file);
       setImageFile(compressed);
       setImagePreview(URL.createObjectURL(compressed));
@@ -203,6 +205,7 @@ export function CreatePostScreen() {
                 type="button"
                 onClick={() => {
                   setImageFile(null);
+                  setOriginalImageSize(null);
                   setImagePreview(null);
                 }}
                 className="absolute top-2 left-2 flex h-8 w-8 items-center justify-center rounded-full bg-ink/75 text-white hover:bg-ink transition shadow-sm"
@@ -214,9 +217,11 @@ export function CreatePostScreen() {
                 <div className="flex items-center justify-between bg-surface-raised px-3.5 py-2 text-xs border-t border-surface-dim">
                   <span className="inline-flex items-center gap-1.5 font-bold text-emerald-600">
                     <CheckCircle className="h-4 w-4" />
-                    تم الضغط بحجم صغير ({Math.round(imageFile.size / 1024)} ك.ب)
+                    {originalImageSize
+                      ? `تم الضغط إلى سُدس الحجم الأصلي (${Math.round(imageFile.size / 1024)} ك.ب بدلاً من ${Math.round(originalImageSize / 1024)} ك.ب)`
+                      : `تم الضغط بحجم صغير (${Math.round(imageFile.size / 1024)} ك.ب)`}
                   </span>
-                  <span className="text-[11px] text-ink-muted">سريعة في التصفح وخفيفة في التحميل</span>
+                  <span className="text-[11px] text-ink-muted">سريعة جداً في التحميل</span>
                 </div>
               )}
               <div className="flex items-center gap-2 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-400">
