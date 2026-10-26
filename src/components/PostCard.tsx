@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MessageCircle, Forward, Flame, MoreHorizontal, Trash2, UserPlus, BadgeCheck, Loader2, X, EyeOff, Ban, Pencil, Flag, Send, Clock, UserX } from 'lucide-react';
 import type { FeedPost, LikeReaction } from '@/types';
 import { Avatar } from '@/components/Avatar';
+import { CommentsModal } from '@/components/CommentsModal';
 import { ReactionButton } from '@/components/ReactionButton';
 import { timeAgo } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -54,6 +55,8 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
   const [suppressed, setSuppressed] = useState(false);
   const [reportMessage, setReportMessage] = useState<string | null>(null);
   const [authorIsAdmin, setAuthorIsAdmin] = useState<boolean | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentCount, setCommentCount] = useState(post.comment_count);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareFriends, setShareFriends] = useState<Array<{ user_id: string; full_name: string; avatar_url: string | null }>>([]);
   const [shareLoading, setShareLoading] = useState(false);
@@ -66,9 +69,10 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
   useEffect(() => {
     setLiked(post.viewer_liked);
     setLikeCount(post.like_count);
+    setCommentCount(post.comment_count);
     setSelectedReaction(post.viewer_reaction ?? (post.viewer_liked ? 'like' : null));
     setReactionCounts(post.reaction_counts ?? {});
-  }, [post.id, post.like_count, post.viewer_liked, post.viewer_reaction, post.reaction_counts]);
+  }, [post.id, post.like_count, post.comment_count, post.viewer_liked, post.viewer_reaction, post.reaction_counts]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -725,11 +729,12 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
         />
 
         <button
-          onClick={() => navigate(`/post/${post.id}`)}
+          onClick={() => setCommentsOpen(true)}
           className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-subtle"
+          aria-label="التعليقات"
         >
           <MessageCircle className="h-5 w-5" strokeWidth={2} />
-          <span>{post.comment_count > 0 ? post.comment_count : 'تعليق'}</span>
+          <span>{commentCount > 0 ? commentCount : 'تعليق'}</span>
         </button>
 
         <button
@@ -741,6 +746,17 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
           <span>نشر</span>
         </button>
       </div>
+
+      {commentsOpen && (
+        <CommentsModal
+          isOpen={commentsOpen}
+          onClose={() => setCommentsOpen(false)}
+          postId={post.id}
+          postAuthorName={post.author_name}
+          onCountChange={(count) => setCommentCount(count)}
+        />
+      )}
+
       {shareOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setShareOpen(false)}>
           <section className="max-h-[75dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-surface-raised p-4 shadow-card-raised" onClick={(event) => event.stopPropagation()}>
