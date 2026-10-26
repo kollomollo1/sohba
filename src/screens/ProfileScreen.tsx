@@ -393,7 +393,7 @@ export function ProfileScreen() {
             <div className="flex flex-col">
               {posts.map((p, index) => (
                 <div key={p.id}>
-                  {index > 0 && <div className="h-[1.5px] w-full bg-[#858c9e] dark:bg-slate-600 my-0" />}
+                  {index > 0 && <div className="h-[2px] w-full bg-[#94a3b8] dark:bg-slate-600 my-0" />}
                   <PostCard
                     post={p}
                     onDeleted={(id) => setPosts((prev) => prev.filter((post) => post.id !== id))}

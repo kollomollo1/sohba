@@ -508,7 +508,7 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
         </div>
       )}
 
-      <div className="p-4">
+      <div className="px-3.5 pt-2.5 pb-2.5">
         {/* Header */}
         <div className="relative flex items-start gap-3">
           <button onClick={() => navigate(`/profile/${post.author_id}`)} className="shrink-0">
@@ -710,7 +710,7 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
       )}
 
       {/* Footer / actions */}
-      <div className="flex items-center gap-1 px-2 py-1.5">
+      <div className="flex items-center gap-1 px-2 py-0.5">
         <ReactionButton
           reaction={selectedReaction}
           count={likeCount}
