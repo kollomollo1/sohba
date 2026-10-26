@@ -758,7 +758,7 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
       )}
 
       {shareOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setShareOpen(false)}>
+        <div data-modal="true" className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setShareOpen(false)}>
           <section className="max-h-[75dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-surface-raised p-4 shadow-card-raised" onClick={(event) => event.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-bold text-ink">مشاركة المنشور</h2>

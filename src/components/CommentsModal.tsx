@@ -69,14 +69,26 @@ export function CommentsModal({
     }
   }, [isOpen]);
 
-  // Close on Escape
+  // Close on Escape or Mobile Back button
   useEffect(() => {
     if (!isOpen) return;
+
+    window.history.pushState({ modalOpen: true }, '');
+
+    const onPopState = () => {
+      onClose();
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
+
+    window.addEventListener('popstate', onPopState);
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [isOpen, onClose]);
 
   // Lock body scroll
@@ -171,6 +183,7 @@ export function CommentsModal({
 
   return (
     <div
+      data-modal="true"
       className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4 backdrop-blur-xs transition-opacity"
       onClick={onClose}
     >

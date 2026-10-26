@@ -160,23 +160,55 @@ export function HomeFeedScreen() {
     return () => window.removeEventListener('post-controls-undone', refreshAfterUndo);
   }, [filter, loadFeed]);
 
-  // ── Back-button → scroll to top ──────────────────────────────────────────
-  useEffect(() => {
-    // Push a dummy history entry so the back button hits us first
-    window.history.pushState({ homeFeedScrollGuard: true }, '');
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  const loadFeedRef = useRef(loadFeed);
+  loadFeedRef.current = loadFeed;
+  const guardActiveRef = useRef(false);
 
-    const onPopState = (e: PopStateEvent) => {
-      if (window.scrollY > 0) {
-        // User is scrolled down → scroll to top and re-push the guard
-        e.preventDefault?.();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+  // ── Back-button → scroll to top + refresh ──────────────────────────────
+  useEffect(() => {
+    const onScroll = () => {
+      const scrollY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      if (scrollY > 50 && !guardActiveRef.current) {
         window.history.pushState({ homeFeedScrollGuard: true }, '');
+        guardActiveRef.current = true;
       }
-      // If already at top, let normal navigation proceed
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    const onPopState = () => {
+      // If any modal/dialog is open, let the modal close without triggering feed actions
+      if (document.querySelector('[data-modal="true"]')) {
+        return;
+      }
+
+      const scrollY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      if (scrollY > 20) {
+        guardActiveRef.current = false;
+        // 1. Scroll smoothly to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // 2. Refresh after initiating/reaching the top
+        setTimeout(() => {
+          setIsRefreshing(true);
+          void (async () => {
+            try {
+              await loadFeedRef.current(true, filterRef.current);
+            } finally {
+              setIsRefreshing(false);
+            }
+          })();
+        }, 320);
+      } else {
+        guardActiveRef.current = false;
+      }
     };
 
     window.addEventListener('popstate', onPopState);
     return () => {
+      window.removeEventListener('scroll', onScroll);
       window.removeEventListener('popstate', onPopState);
     };
   }, []);
