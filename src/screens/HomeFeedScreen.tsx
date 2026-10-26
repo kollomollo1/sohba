@@ -363,7 +363,7 @@ export function HomeFeedScreen() {
           <div className="flex flex-col">
             {posts.map((post, index) => (
               <div key={post.id}>
-                {index > 0 && <div className="h-[2px] w-full bg-[#cbd5e1] dark:bg-slate-700 my-[2px]" />}
+                {index > 0 && <div className="h-[2px] w-full bg-[#94a3b8] dark:bg-slate-600 my-0" />}
                 <PostCard
                   post={post}
                   onLikeToggled={onLikeToggled}
