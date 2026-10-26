@@ -185,16 +185,18 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
 
   async function deletePost() {
     setMenuOpen(false);
-    if (!window.confirm(isAdmin && profile?.id !== post.author_id
+    const isOwn = profile?.id === post.author_id;
+    if (!window.confirm(isAdmin && !isOwn
       ? 'حذف هذا المنشور نهائياً بصلاحية الأدمن؟ لا يمكن التراجع عن الحذف.'
       : 'هل تريد حذف هذا المنشور؟ لا يمكن التراجع عن الحذف.')) return;
     setBusy(true);
+    setDeleteError(null);
 
     if (post.image_url) {
       try {
         const match = post.image_url.match(/\/media\/(.+)$/);
         if (match) {
-          const storagePath = decodeURIComponent(match[1]);
+          const storagePath = decodeURIComponent(match[1].split('?')[0]);
           void supabase.storage.from('media').remove([storagePath]);
         }
       } catch (imgErr) {
@@ -202,13 +204,25 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
       }
     }
 
-    const { error } = isAdmin
-      ? await supabase.rpc('admin_delete_post', { p_post_id: post.id })
-      : await supabase.from('posts').delete().eq('id', post.id).eq('author_id', profile?.id ?? '');
+    // 1. Try unified secure delete_post RPC first (works for both author and admin)
+    let { error } = await supabase.rpc('delete_post', { p_post_id: post.id });
+
+    // 2. If delete_post RPC is not yet applied, fallback to admin_delete_post or direct delete
+    if (error) {
+      if (isAdmin) {
+        const adminRes = await supabase.rpc('admin_delete_post', { p_post_id: post.id });
+        error = adminRes.error;
+      }
+      if (error && isOwn) {
+        const directRes = await supabase.from('posts').delete().eq('id', post.id).eq('author_id', profile?.id ?? '');
+        error = directRes.error;
+      }
+    }
+
     setBusy(false);
     if (error) {
-      console.error('delete post failed', error.message);
-      setDeleteError('تعذّر حذف المنشور. حاول مرة أخرى.');
+      console.error('delete post failed', error.message, error);
+      setDeleteError(error.message || 'تعذّر حذف المنشور. حاول مرة أخرى.');
       return;
     }
     onDeleted?.(post.id);
