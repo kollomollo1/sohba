@@ -309,6 +309,9 @@ export function HomeFeedScreen() {
           </button>
         </div>
 
+        {/* Divider below filter tabs */}
+        <div className="h-[1.5px] w-full bg-[#b0b8c4] dark:bg-slate-700 !my-2" />
+
         {/* Loading skeletons */}
         {loading && (
           <div className="space-y-3">
@@ -360,10 +363,10 @@ export function HomeFeedScreen() {
 
         {/* Feed */}
         {!loading && (
-          <div className="flex flex-col">
+          <div className="flex flex-col !mt-2">
             {posts.map((post, index) => (
               <div key={post.id}>
-                {index > 0 && <div className="h-[2px] w-full bg-[#94a3b8] dark:bg-slate-600 my-0" />}
+                {index > 0 && <div className="h-[1.5px] w-full bg-[#b0b8c4] dark:bg-slate-700 my-0" />}
                 <PostCard
                   post={post}
                   onLikeToggled={onLikeToggled}
