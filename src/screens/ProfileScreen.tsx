@@ -390,20 +390,22 @@ export function ProfileScreen() {
               <p className="font-bold text-ink">لا توجد منشورات</p>
             </div>
           ) : (
-            posts.map((p, index) => (
-              <div key={p.id}>
-                {index > 0 && <div className="border-t border-slate-300 dark:border-slate-600 mb-4" />}
-                <PostCard
-                  post={p}
-                  onDeleted={(id) => setPosts((prev) => prev.filter((post) => post.id !== id))}
-                  onSuppressed={(postId, authorId, scope) =>
-                    setPosts((prev) =>
-                      prev.filter((post) => (scope === 'author' ? post.author_id !== authorId : post.id !== postId))
-                    )
-                  }
-                />
-              </div>
-            ))
+            <div className="space-y-2">
+              {posts.map((p, index) => (
+                <div key={p.id}>
+                  {index > 0 && <div className="border-t border-slate-200/80 dark:border-slate-800 mb-2" />}
+                  <PostCard
+                    post={p}
+                    onDeleted={(id) => setPosts((prev) => prev.filter((post) => post.id !== id))}
+                    onSuppressed={(postId, authorId, scope) =>
+                      setPosts((prev) =>
+                        prev.filter((post) => (scope === 'author' ? post.author_id !== authorId : post.id !== postId))
+                      )
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </main>

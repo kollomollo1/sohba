@@ -359,20 +359,23 @@ export function HomeFeedScreen() {
         )}
 
         {/* Feed */}
-        {!loading &&
-          posts.map((post, index) => (
-            <div key={post.id}>
-              {index > 0 && <div className="border-t border-slate-300 dark:border-slate-600 mb-4" />}
-              <PostCard
-                post={post}
-                onLikeToggled={onLikeToggled}
-                onDeleted={onPostDeleted}
-                onSuppressed={onPostSuppressed}
-                friendship={friendships[post.author_id]}
-                onFriendshipChanged={onFriendshipChanged}
-              />
-            </div>
-          ))}
+        {!loading && (
+          <div className="space-y-2">
+            {posts.map((post, index) => (
+              <div key={post.id}>
+                {index > 0 && <div className="border-t border-slate-200/80 dark:border-slate-800 mb-2" />}
+                <PostCard
+                  post={post}
+                  onLikeToggled={onLikeToggled}
+                  onDeleted={onPostDeleted}
+                  onSuppressed={onPostSuppressed}
+                  friendship={friendships[post.author_id]}
+                  onFriendshipChanged={onFriendshipChanged}
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Load more */}
         {!loading && hasMore && posts.length > 0 && (
