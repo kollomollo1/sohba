@@ -10,16 +10,18 @@ export function timeAgo(iso: string): string {
   const day = Math.floor(hr / 24);
 
   if (sec < 60) return 'الآن';
-  if (min < 60) return `قبل ${min} دقيقة`;
-  if (hr < 24) return `قبل ${hr} ساعة`;
-  if (day < 7) return `قبل ${day} يوم`;
+  if (min < 60) return `${min}د`;
+  if (hr < 24) return `${hr}س`;
+  if (day < 7) return `${day}ي`;
   const week = Math.floor(day / 7);
-  if (week < 4) return `قبل ${week} أسبوع`;
+  if (week < 4) return `${week}أ`;
   const month = Math.floor(day / 30);
-  if (month < 12) return `قبل ${month} شهر`;
+  if (month < 12) return `${month}ش`;
   const year = Math.floor(day / 365);
-  return `قبل ${year} سنة`;
+  return `${year}سنة`;
 }
+
+export const shortTimeAgo = timeAgo;
 
 export type FriendCtx = {
   kind: 'self' | 'friend' | 'friend_of_friend' | 'community';

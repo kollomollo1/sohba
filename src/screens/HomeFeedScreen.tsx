@@ -309,9 +309,6 @@ export function HomeFeedScreen() {
           </button>
         </div>
 
-        {/* Divider below filter tabs */}
-        <div className="h-[1.5px] w-full bg-[#b0b8c4] dark:bg-slate-700 !my-2" />
-
         {/* Loading skeletons */}
         {loading && (
           <div className="space-y-3">
@@ -363,19 +360,17 @@ export function HomeFeedScreen() {
 
         {/* Feed */}
         {!loading && (
-          <div className="flex flex-col !mt-2">
-            {posts.map((post, index) => (
-              <div key={post.id}>
-                {index > 0 && <div className="h-[1.5px] w-full bg-[#b0b8c4] dark:bg-slate-700 my-0" />}
-                <PostCard
-                  post={post}
-                  onLikeToggled={onLikeToggled}
-                  onDeleted={onPostDeleted}
-                  onSuppressed={onPostSuppressed}
-                  friendship={friendships[post.author_id]}
-                  onFriendshipChanged={onFriendshipChanged}
-                />
-              </div>
+          <div className="space-y-3.5">
+            {posts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                onLikeToggled={onLikeToggled}
+                onDeleted={onPostDeleted}
+                onSuppressed={onPostSuppressed}
+                friendship={friendships[post.author_id]}
+                onFriendshipChanged={onFriendshipChanged}
+              />
             ))}
           </div>
         )}
