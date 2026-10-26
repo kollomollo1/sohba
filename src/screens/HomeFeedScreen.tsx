@@ -168,15 +168,32 @@ export function HomeFeedScreen() {
 
   // ── Back-button → scroll to top + refresh ──────────────────────────────
   useEffect(() => {
-    const onScroll = () => {
-      const scrollY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-      if (scrollY > 50 && !guardActiveRef.current) {
-        window.history.pushState({ homeFeedScrollGuard: true }, '');
+    // 1. Disable browser's automatic jump on back
+    if ('scrollRestoration' in window.history) {
+      try {
+        window.history.scrollRestoration = 'manual';
+      } catch (err) {
+        console.warn('could not set scrollRestoration', err);
+      }
+    }
+
+    const checkScroll = () => {
+      const scrollY =
+        window.scrollY ||
+        document.documentElement.scrollTop ||
+        document.body.scrollTop ||
+        0;
+
+      // Arm as soon as user scrolls even slightly (> 15px)
+      if (scrollY > 15 && !guardActiveRef.current) {
+        window.history.pushState({ homeFeedScrollGuard: true }, '', window.location.href);
         guardActiveRef.current = true;
       }
     };
 
-    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', checkScroll, { passive: true });
+    window.addEventListener('touchmove', checkScroll, { passive: true });
+    checkScroll();
 
     const onPopState = () => {
       // If any modal/dialog is open, let the modal close without triggering feed actions
@@ -184,31 +201,30 @@ export function HomeFeedScreen() {
         return;
       }
 
-      const scrollY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-      if (scrollY > 20) {
+      if (guardActiveRef.current) {
         guardActiveRef.current = false;
-        // 1. Scroll smoothly to top
-        window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        // 2. Refresh after initiating/reaching the top
-        setTimeout(() => {
-          setIsRefreshing(true);
-          void (async () => {
-            try {
-              await loadFeedRef.current(true, filterRef.current);
-            } finally {
-              setIsRefreshing(false);
-            }
-          })();
-        }, 320);
-      } else {
-        guardActiveRef.current = false;
+        // 1. Smoothly scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.documentElement.scrollTo?.({ top: 0, behavior: 'smooth' });
+        document.body.scrollTo?.({ top: 0, behavior: 'smooth' });
+
+        // 2. Trigger refresh and show spinner
+        setIsRefreshing(true);
+        void (async () => {
+          try {
+            await loadFeedRef.current(true, filterRef.current);
+          } finally {
+            setIsRefreshing(false);
+          }
+        })();
       }
     };
 
     window.addEventListener('popstate', onPopState);
     return () => {
-      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('touchmove', checkScroll);
       window.removeEventListener('popstate', onPopState);
     };
   }, []);
