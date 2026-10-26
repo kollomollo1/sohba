@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { X, Flame, Loader2, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { X, Flame, Loader2, Image as ImageIcon, AlertCircle, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
@@ -210,6 +210,15 @@ export function CreatePostScreen() {
               >
                 <X className="h-4 w-4" />
               </button>
+              {imageFile && (
+                <div className="flex items-center justify-between bg-surface-raised px-3.5 py-2 text-xs border-t border-surface-dim">
+                  <span className="inline-flex items-center gap-1.5 font-bold text-emerald-600">
+                    <CheckCircle className="h-4 w-4" />
+                    تم الضغط بحجم صغير ({Math.round(imageFile.size / 1024)} ك.ب)
+                  </span>
+                  <span className="text-[11px] text-ink-muted">سريعة في التصفح وخفيفة في التحميل</span>
+                </div>
+              )}
               <div className="flex items-center gap-2 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-400">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>المنشورات التي تحتوي على صور تخضع لمراجعة قسم الإدارة قبل ظهورها للجميع.</span>
