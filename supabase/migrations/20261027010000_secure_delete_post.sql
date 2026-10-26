@@ -1,9 +1,14 @@
 -- ============================================================================
--- Secure and reliable post deletion for both post authors and admins
--- Handles all foreign key references cleanly without constraint violations
+-- 0. Drop the trigger that attempted direct deletion from storage.objects
+-- In Supabase Storage, direct deletion from storage.objects table is blocked.
+-- Images are deleted via the Supabase Storage API client-side / Edge Functions.
 -- ============================================================================
+drop trigger if exists trg_post_deleted_cleanup on public.posts;
+drop function if exists public.on_post_deleted_cleanup();
 
+-- ============================================================================
 -- 1. Helper function: is current user an admin?
+-- ============================================================================
 create or replace function public.is_current_user_admin()
 returns boolean
 language plpgsql
@@ -33,7 +38,9 @@ $$;
 
 grant execute on function public.is_current_user_admin() to anon, authenticated;
 
+-- ============================================================================
 -- 2. Enhanced admin_delete_post
+-- ============================================================================
 create or replace function public.admin_delete_post(p_post_id uuid)
 returns void
 language plpgsql
@@ -59,7 +66,9 @@ $$;
 
 grant execute on function public.admin_delete_post(uuid) to anon, authenticated;
 
+-- ============================================================================
 -- 3. Unified delete_post: permits either the author of the post OR any admin
+-- ============================================================================
 create or replace function public.delete_post(p_post_id uuid)
 returns boolean
 language plpgsql
@@ -107,3 +116,21 @@ end;
 $$;
 
 grant execute on function public.delete_post(uuid) to anon, authenticated;
+
+-- ============================================================================
+-- 4. Update cleanup_user_posts_and_media without direct storage.objects deletion
+-- ============================================================================
+create or replace function public.cleanup_user_posts_and_media(p_target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Delete all posts by this user from public.posts
+  delete from public.posts
+  where author_id = p_target_user_id;
+end;
+$$;
+
+grant execute on function public.cleanup_user_posts_and_media(uuid) to service_role;
