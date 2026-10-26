@@ -390,10 +390,10 @@ export function ProfileScreen() {
               <p className="font-bold text-ink">لا توجد منشورات</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2.5">
               {posts.map((p, index) => (
-                <div key={p.id}>
-                  {index > 0 && <div className="border-t border-slate-200/80 dark:border-slate-800 mb-2" />}
+                <div key={p.id} className="flex flex-col gap-2.5">
+                  {index > 0 && <div className="h-[1px] w-full bg-[#d5dbe4] dark:bg-slate-700" />}
                   <PostCard
                     post={p}
                     onDeleted={(id) => setPosts((prev) => prev.filter((post) => post.id !== id))}

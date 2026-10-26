@@ -360,10 +360,10 @@ export function HomeFeedScreen() {
 
         {/* Feed */}
         {!loading && (
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2.5">
             {posts.map((post, index) => (
-              <div key={post.id}>
-                {index > 0 && <div className="border-t border-slate-200/80 dark:border-slate-800 mb-2" />}
+              <div key={post.id} className="flex flex-col gap-2.5">
+                {index > 0 && <div className="h-[1px] w-full bg-[#d5dbe4] dark:bg-slate-700" />}
                 <PostCard
                   post={post}
                   onLikeToggled={onLikeToggled}
