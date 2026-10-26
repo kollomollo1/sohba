@@ -1,6 +1,6 @@
 /**
  * Client-side image compression for social posts.
- * Compresses images to at most 1/6th (سُدس) of their original file size
+ * Compresses images to at most half (نصف) of their original file size
  * while ensuring maximum visual clarity on mobile and desktop feeds.
  */
 
@@ -56,11 +56,11 @@ async function loadSourceImage(file: File): Promise<{
 export async function compressPostImage(file: File): Promise<File> {
   const source = await loadSourceImage(file);
   try {
-    const MAX_DIMENSION = 1080;
-    // Target size is at most 1/6th of original file size, capped at 180 KB
+    const MAX_DIMENSION = 1440;
+    // Target size is at most half (1/2) of original file size, capped at 500 KB
     const TARGET_MAX_BYTES = Math.min(
-      Math.max(25 * 1024, Math.round(file.size / 6)),
-      180 * 1024
+      Math.max(40 * 1024, Math.round(file.size / 2)),
+      500 * 1024
     );
 
     const initialScale = Math.min(1, MAX_DIMENSION / Math.max(source.width, source.height));
@@ -69,7 +69,7 @@ export async function compressPostImage(file: File): Promise<File> {
 
     const MAX_ATTEMPTS = 6;
     let bestBlob: Blob | null = null;
-    let quality = 0.76;
+    let quality = 0.84;
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const canvas = document.createElement('canvas');

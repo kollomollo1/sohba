@@ -218,8 +218,8 @@ export function CreatePostScreen() {
                   <span className="inline-flex items-center gap-1.5 font-bold text-emerald-600">
                     <CheckCircle className="h-4 w-4" />
                     {originalImageSize
-                      ? `تم الضغط إلى سُدس الحجم الأصلي (${Math.round(imageFile.size / 1024)} ك.ب بدلاً من ${Math.round(originalImageSize / 1024)} ك.ب)`
-                      : `تم الضغط بحجم صغير (${Math.round(imageFile.size / 1024)} ك.ب)`}
+                      ? `تم الضغط إلى نصف الحجم الأصلي (${Math.round(imageFile.size / 1024)} ك.ب بدلاً من ${Math.round(originalImageSize / 1024)} ك.ب)`
+                      : `تم الضغط بحجم خفيف (${Math.round(imageFile.size / 1024)} ك.ب)`}
                   </span>
                   <span className="text-[11px] text-ink-muted">سريعة جداً في التحميل</span>
                 </div>
