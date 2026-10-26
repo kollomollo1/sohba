@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    direction: rtl;
+    -webkit-text-size-adjust: 100%;
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+  }
+  body {
+    @apply bg-surface text-ink font-arabic antialiased;
+    text-rendering: optimizeLegibility;
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+  }
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, textarea, select {
+    @apply font-arabic;
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+  }
+  /* Hide scrollbars on horizontal scrollers */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  ::selection {
+    @apply bg-primary-100 text-ink;
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-surface relative;
+  }
+  .app-body {
+    @apply flex-1 pb-4;
+  }
+  .card {
+    @apply rounded-2xl bg-surface-raised p-4 shadow-card border border-surface-dim/60;
+  }
+  .card-raised {
+    @apply rounded-2xl bg-surface-raised p-4 shadow-card-raised border border-surface-dim;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-fab transition-all active:scale-[0.97] disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-accent-soft px-5 py-2.5 text-sm font-semibold text-primary transition-all active:scale-[0.97];
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-subtle active:scale-[0.97];
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-error-50 px-5 py-2.5 text-sm font-semibold text-error transition-all active:scale-[0.97];
+  }
+  .input-field {
+    @apply w-full rounded-2xl border border-surface-dim bg-surface-raised px-4 py-3 text-sm text-ink placeholder:text-ink-faint focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary-100 transition;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all active:scale-95;
+  }
+  .chip-active {
+    @apply bg-primary text-white;
+  }
+  .chip-inactive {
+    @apply bg-surface-subtle text-ink-soft;
+  }
+  .avatar {
+    @apply rounded-full bg-surface-dim object-cover;
+  }
+  .badge-dot {
+    @apply absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-urgent px-1 text-[10px] font-bold text-white;
+  }
+  .fade-in {
+    @apply animate-fade-in;
+  }
+  .slide-up {
+    @apply animate-slide-up;
+  }
+  .sheet-backdrop {
+    @apply fixed inset-0 z-40 bg-ink/40 backdrop-blur-sm animate-fade-in;
+  }
+  .sheet {
+    @apply fixed bottom-0 inset-x-0 z-50 mx-auto w-full max-w-[480px] rounded-t-3xl bg-surface-raised p-5 pb-8 animate-slide-up;
+  }
+  .divider {
+    @apply h-px w-full bg-surface-dim;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-2xl bg-surface-dim;
+  }
+  .post-font, .font-noto {
+    font-family: 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+  }
+}
