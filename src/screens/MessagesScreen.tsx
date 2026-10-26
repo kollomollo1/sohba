@@ -140,7 +140,7 @@ export function MessagesScreen() {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 flex flex-col gap-3 overflow-y-auto p-3">
+      <main className="min-h-0 flex-1 flex flex-col gap-3.5 overflow-y-auto p-3.5">
         {loading && <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}
         {!loading && messages.length === 0 && !error && (
           <p className="my-auto py-8 text-center text-sm text-ink-muted">ابدأ المحادثة برسالة لطيفة.</p>

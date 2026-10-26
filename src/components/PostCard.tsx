@@ -518,7 +518,7 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
             <div className="flex items-center gap-2">
               <button
                 onClick={() => navigate(`/profile/${post.author_id}`)}
-                className="truncate font-bold text-ink hover:text-primary"
+                className="truncate font-bold text-ink hover:text-primary text-[15px]"
               >
                 {post.author_name}
               </button>
@@ -532,9 +532,10 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
                   {relation.state === 'requested' ? 'طلب مرسل' : relation.state === 'incoming' ? 'قبول الصداقة' : 'إضافة صديق'}
                 </button>
               )}
-              <span className="text-xs text-ink-faint">·</span>
-              <span className="shrink-0 text-xs text-ink-muted">{timeAgo(post.created_at)}</span>
             </div>
+            <time dateTime={post.created_at} className="block text-xs text-ink-muted mt-0.5 leading-tight">
+              {timeAgo(post.created_at)}
+            </time>
             {friendError && <p className="mt-1 text-[11px] text-error">{friendError}</p>}
           </div>
           {profile?.id === post.author_id ? (

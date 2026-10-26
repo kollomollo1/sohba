@@ -176,11 +176,9 @@ export function PostDetailScreen() {
               <div key={c.id} className="card flex gap-3 py-3">
                 <Avatar name={c.author_name} src={c.author_avatar} size={36} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-bold text-ink">{c.author_name}</span>
-                    <span className="text-[11px] text-ink-faint">{timeAgo(c.created_at)}</span>
-                  </div>
-                  <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink-soft font-noto">{c.body}</p>
+                  <span className="truncate text-sm font-bold text-ink">{c.author_name}</span>
+                  <time className="block text-[11px] text-ink-faint leading-tight mt-0.5">{timeAgo(c.created_at)}</time>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-soft font-noto">{c.body}</p>
                 </div>
                 {c.author_id === me?.id && (
                   <button

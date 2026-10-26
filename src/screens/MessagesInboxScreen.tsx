@@ -100,22 +100,32 @@ export function MessagesInboxScreen() {
             <p className="text-sm text-ink-muted">افتح قائمة الأصدقاء واضغط أيقونة الرسالة لبدء محادثة.</p>
           </div>
         )}
-        <div className="divide-y divide-surface-dim rounded-2xl bg-surface-raised">
+        <div className="space-y-3">
           {conversations.map((conversation) => (
             <button
               key={conversation.userId}
               onClick={() => navigate('/messages/' + conversation.userId)}
-              className={'flex w-full items-center gap-3 p-3 text-right hover:bg-surface-subtle ' + (conversation.unread ? 'bg-primary-50' : '')}
+              className={`flex w-full items-center gap-3.5 rounded-2xl border border-surface-dim bg-surface-raised p-3.5 text-right shadow-[0_2px_8px_rgba(19,27,46,0.04)] transition-all hover:shadow-card-raised active:scale-[0.99] ${
+                conversation.unread ? 'bg-primary-50/70 border-primary/25' : ''
+              }`}
             >
-              <Avatar name={conversation.name} src={conversation.avatar} size={48} />
+              <Avatar name={conversation.name} src={conversation.avatar} size={50} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <p className={'truncate ' + (conversation.unread ? 'font-extrabold text-primary-800' : 'font-bold text-ink')}>{conversation.name}</p>
-                  <time className="shrink-0 text-[11px] text-ink-faint">{timeAgo(conversation.createdAt)}</time>
+                  <p className={`truncate text-[15px] ${conversation.unread ? 'font-extrabold text-primary-800' : 'font-bold text-ink'}`}>
+                    {conversation.name}
+                  </p>
+                  <time className="shrink-0 text-[11px] text-ink-faint">
+                    {timeAgo(conversation.createdAt)}
+                  </time>
                 </div>
                 <div className="mt-1 flex items-center justify-between gap-2">
-                  <p className={'truncate text-sm ' + (conversation.unread ? 'font-semibold text-ink' : 'text-ink-muted')}>{conversation.body}</p>
-                  {conversation.unread && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-urgent" aria-label="رسالة غير مقروءة" />}
+                  <p className={`truncate text-sm ${conversation.unread ? 'font-semibold text-ink' : 'text-ink-muted'}`}>
+                    {conversation.body}
+                  </p>
+                  {conversation.unread && (
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-urgent shadow-sm" aria-label="رسالة غير مقروءة" />
+                  )}
                 </div>
               </div>
             </button>
