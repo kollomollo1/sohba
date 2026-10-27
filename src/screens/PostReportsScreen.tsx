@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Flag, Loader2, Trash2, Check, ExternalLink, Search, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
-import { getOptimizedPostImageUrl } from '@/lib/cloudinary';
+import { getOptimizedPostImageUrl, deletePostImageFromCloudinary, isCloudinaryUrl } from '@/lib/cloudinary';
 
 type ReportRow = {
   id: string;
@@ -104,6 +104,29 @@ export function PostReportsScreen() {
       setError('تعذّر حذف المنشور: ' + delErr.message);
       return;
     }
+
+    if (report.post_image_url) {
+      if (isCloudinaryUrl(report.post_image_url)) {
+        if (session?.access_token) {
+          try {
+            await deletePostImageFromCloudinary(report.post_image_url, session.access_token, report.post_id);
+          } catch (e) {
+            console.warn('delete image from cloudinary error:', e);
+          }
+        }
+      } else if (report.post_image_url.includes('/media/')) {
+        try {
+          const match = report.post_image_url.match(/\/media\/(.+)$/);
+          if (match) {
+            const storagePath = decodeURIComponent(match[1]);
+            void supabase.storage.from('media').remove([storagePath]);
+          }
+        } catch (imgErr) {
+          console.warn('delete image from storage failed:', imgErr);
+        }
+      }
+    }
+
     await supabase.from('post_reports').update({ status: 'action_taken' }).eq('id', report.id);
     setReports((prev) => prev.map((item) => (item.id === report.id ? { ...item, status: 'action_taken' } : item)));
     setBusyId(null);

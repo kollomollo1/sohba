@@ -268,6 +268,7 @@ export async function deletePostImageFromCloudinary(
   try {
     const res = await fetch('/api/cloudinary-delete', {
       method: 'POST',
+      keepalive: true,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,

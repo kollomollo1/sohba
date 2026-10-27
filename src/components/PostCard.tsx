@@ -219,7 +219,11 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
     if (post.image_url) {
       if (isCloudinaryUrl(post.image_url)) {
         if (session?.access_token) {
-          void deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+          try {
+            await deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+          } catch (e) {
+            console.warn('delete image from cloudinary error:', e);
+          }
         }
       } else if (post.image_url.includes('/media/')) {
         try {

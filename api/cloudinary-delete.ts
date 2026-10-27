@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v2 as cloudinary } from 'cloudinary';
-import { authenticateUser, serverSupabase } from './utils/auth.js';
+import { authenticateUser, checkIfUserIsAdmin, createUserSupabase } from './utils/auth.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -32,30 +32,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 2. Validate user authorization: must be admin or the folder owner
-  const isAdmin = user.app_metadata?.role === 'admin';
-  const expectedFolderPrefix = `sohba/posts/${user.id}/`;
-  const isOwner = targetPublicId.startsWith(expectedFolderPrefix);
+  const isOwner = targetPublicId.startsWith(`sohba/posts/${user.id}/`);
+  const isAdmin = await checkIfUserIsAdmin(user, authHeader);
 
   if (!isAdmin && !isOwner) {
-    // Also double-check if postId is given and author matches
-    if (postId) {
-      const { data: postRow } = await serverSupabase
-        .from('posts')
-        .select('author_id')
-        .eq('id', postId)
-        .maybeSingle();
-
-      if (!postRow || postRow.author_id !== user.id) {
-        return res.status(403).json({ error: 'غير مصرح لك بحذف هذه الصورة.' });
-      }
-    } else {
-      return res.status(403).json({ error: 'غير مصرح لك بحذف صورة تابعة لمستخدم آخر.' });
-    }
+    return res.status(403).json({
+      error: 'غير مصرح لك بحذف هذه الصورة. يجب أن تكون صاحب المنشور أو مسؤولاً (Admin).',
+    });
   }
 
   // 3. Verify that no OTHER post is referencing this image
   try {
-    let query = serverSupabase.from('posts').select('id', { count: 'exact', head: true });
+    const userSupabase = createUserSupabase(authHeader);
+    let query = userSupabase.from('posts').select('id', { count: 'exact', head: true });
     if (postId) {
       query = query.neq('id', postId);
     }

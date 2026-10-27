@@ -154,7 +154,11 @@ export function AdminScreen() {
       if (post.image_url) {
         if (isCloudinaryUrl(post.image_url)) {
           if (session?.access_token) {
-            void deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+            try {
+              await deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+            } catch (e) {
+              console.warn('delete image from cloudinary error:', e);
+            }
           }
         } else if (post.image_url.includes('/media/')) {
           try {
@@ -200,7 +204,11 @@ export function AdminScreen() {
       if (pending?.image_url) {
         if (isCloudinaryUrl(pending.image_url)) {
           if (session?.access_token) {
-            void deletePostImageFromCloudinary(pending.image_url, session.access_token, postId);
+            try {
+              await deletePostImageFromCloudinary(pending.image_url, session.access_token, postId);
+            } catch (e) {
+              console.warn('delete image from cloudinary error:', e);
+            }
           }
         } else if (pending.image_url.includes('/media/')) {
           try {
