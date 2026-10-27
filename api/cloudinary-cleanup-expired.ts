@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v2 as cloudinary } from 'cloudinary';
 import { authenticateUser, checkIfUserIsAdmin, getServerSupabase } from './utils/auth.js';
+import { processCloudinaryDeletionQueue } from './utils/cloudinary-queue.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Allow GET (standard for Cron) and POST (for Admin triggers)
@@ -11,7 +12,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. Authorization: Allow Vercel Cron OR Authenticated Admin
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET;
-  const isVercelCron = (cronSecret && authHeader === `Bearer ${cronSecret}`) || req.headers['x-vercel-cron'] === '1';
+  const isVercelCron =
+    (cronSecret && authHeader === `Bearer ${cronSecret}`) ||
+    req.headers['x-vercel-cron'] === '1' ||
+    req.headers['user-agent'] === 'vercel-cron/1.0';
 
   if (!isVercelCron) {
     const { user, error: authErr } = await authenticateUser(authHeader);
@@ -40,16 +44,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     secure: true,
   });
 
+  const client = getServerSupabase();
+
   try {
-    // 3. Purge expired posts from Supabase database as well
+    // 3. Purge expired posts from Supabase database (this triggers on_post_deleted_enqueue_cloudinary)
+    let expiredDbPostsCount = 0;
     try {
-      const client = getServerSupabase();
-      await client.rpc('delete_expired_posts');
+      const { data: dbCount } = await client.rpc('delete_expired_posts');
+      if (typeof dbCount === 'number') {
+        expiredDbPostsCount = dbCount;
+      }
     } catch (dbErr) {
       console.warn('[cloudinary-cleanup] Warning running delete_expired_posts on Supabase:', dbErr);
     }
 
-    // 4. Scan Cloudinary for posts older than 24 hours
+    // 4. Process deletion queue (retries failed tasks and newly queued deletions)
+    const queueResult = await processCloudinaryDeletionQueue({ limit: 50, client });
+
+    // 5. Scan Cloudinary for posts older than 24 hours as a safety fallback
     const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
     const now = Date.now();
     let nextCursor: string | undefined = undefined;
@@ -74,26 +86,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       nextCursor = result.next_cursor;
     } while (nextCursor);
 
-    if (expiredPublicIds.length === 0) {
-      return res.status(200).json({
-        ok: true,
-        message: 'لا توجد صور منتهية الصلاحية (> 24 ساعة) في كلاوديناري.',
-        deletedCount: 0,
-      });
-    }
-
-    // 5. Delete expired images in batches of 100 (Cloudinary API limit)
-    let totalDeleted = 0;
+    // Delete expired images scanned directly from Cloudinary
+    let directDeleted = 0;
     for (let i = 0; i < expiredPublicIds.length; i += 100) {
       const batch = expiredPublicIds.slice(i, i + 100);
       await cloudinary.api.delete_resources(batch);
-      totalDeleted += batch.length;
+      directDeleted += batch.length;
     }
+
+    const totalCleaned = queueResult.deleted + directDeleted;
 
     return res.status(200).json({
       ok: true,
-      message: `تم تنظيف وحذف ${totalDeleted} صورة منتهية الصلاحية من كلاوديناري بنجاح.`,
-      deletedCount: totalDeleted,
+      message: `تم التنظيف بنجاح: تم حذف ${expiredDbPostsCount} منشور من قاعدة البيانات، وتمت معالجة ${queueResult.total} مهمة في طابور الحذف (حُذف ${queueResult.deleted}، حُفظ ${queueResult.skipped}، فشل ${queueResult.failed})، وتم مسح ${directDeleted} صورة قديمة (> 24 ساعة).`,
+      expiredDbPostsCount,
+      queueResult,
+      directDeleted,
+      totalCleaned,
     });
   } catch (err: any) {
     console.error('[cloudinary-cleanup] Failed to clean expired images:', err);

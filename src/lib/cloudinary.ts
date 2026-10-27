@@ -249,21 +249,37 @@ export async function uploadPostImageToCloudinary(
   });
 }
 
+export interface CloudinaryDeleteResponse {
+  ok: boolean;
+  deleted?: boolean;
+  skipped?: boolean;
+  result?: string;
+  message?: string;
+  error?: string;
+}
+
 /**
  * Securely deletes a post image from Cloudinary via our backend endpoint
  */
 export async function deletePostImageFromCloudinary(
   imageUrlOrPublicId: string,
   accessToken: string,
-  postId?: string
-): Promise<boolean> {
-  if (!imageUrlOrPublicId) return false;
+  postId?: string,
+  explicitPublicId?: string | null
+): Promise<CloudinaryDeleteResponse> {
+  if (!imageUrlOrPublicId && !explicitPublicId) {
+    return { ok: false, error: 'No image identifier provided' };
+  }
 
-  const publicId = isCloudinaryUrl(imageUrlOrPublicId)
-    ? extractCloudinaryPublicId(imageUrlOrPublicId)
-    : imageUrlOrPublicId;
+  const publicId =
+    explicitPublicId ||
+    (isCloudinaryUrl(imageUrlOrPublicId)
+      ? extractCloudinaryPublicId(imageUrlOrPublicId)
+      : imageUrlOrPublicId);
 
-  if (!publicId) return false;
+  if (!publicId) {
+    return { ok: false, error: 'Could not extract valid public_id' };
+  }
 
   try {
     const res = await fetch('/api/cloudinary-delete', {
@@ -280,15 +296,77 @@ export async function deletePostImageFromCloudinary(
       }),
     });
 
+    const data = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.warn('[cloudinary] Image deletion returned non-OK status:', res.status, err);
-      return false;
+      console.warn('[cloudinary] Image deletion returned non-OK status:', res.status, data);
+      return {
+        ok: false,
+        deleted: false,
+        error: data.error || `HTTP error ${res.status}`,
+      };
     }
 
-    return true;
-  } catch (err) {
+    return {
+      ok: true,
+      deleted: data.deleted ?? true,
+      skipped: data.skipped ?? false,
+      result: data.result,
+      message: data.message,
+    };
+  } catch (err: any) {
     console.warn('[cloudinary] Failed to call delete API:', err);
-    return false;
+    return {
+      ok: false,
+      deleted: false,
+      error: err.message || 'Network error calling delete endpoint',
+    };
+  }
+}
+
+/**
+ * Trigger processing of pending Cloudinary deletion tasks
+ */
+export async function triggerCloudinaryQueueProcess(
+  accessToken: string,
+  limit = 50
+): Promise<{ ok: boolean; message?: string; result?: any; error?: string }> {
+  try {
+    const res = await fetch(`/api/cloudinary-process-queue?limit=${limit}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: data.error || `HTTP error ${res.status}` };
+    }
+
+    return { ok: true, message: data.message, result: data.result };
+  } catch (err: any) {
+    return { ok: false, error: err.message || 'Failed to trigger queue processing' };
+  }
+}
+
+/**
+ * Fetch current deletion queue statistics
+ */
+export async function getCloudinaryQueueStats(
+  accessToken: string
+): Promise<{ pending: number; failed: number; completed: number; skipped: number; total: number } | null> {
+  try {
+    const res = await fetch('/api/cloudinary-process-queue?stats=true', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return data.stats || null;
+  } catch {
+    return null;
   }
 }

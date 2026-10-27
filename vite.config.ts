@@ -8,7 +8,12 @@ function devApiPlugin(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = req.url?.split('?')[0];
-        if (url === '/api/cloudinary-sign' || url === '/api/cloudinary-delete' || url === '/api/cloudinary-cleanup-expired') {
+        if (
+          url === '/api/cloudinary-sign' ||
+          url === '/api/cloudinary-delete' ||
+          url === '/api/cloudinary-cleanup-expired' ||
+          url === '/api/cloudinary-process-queue'
+        ) {
           const chunks: any[] = [];
           req.on('data', (chunk) => chunks.push(chunk));
           req.on('end', async () => {
@@ -35,7 +40,9 @@ function devApiPlugin(): Plugin {
                   ? '/api/cloudinary-sign.ts'
                   : url === '/api/cloudinary-delete'
                   ? '/api/cloudinary-delete.ts'
-                  : '/api/cloudinary-cleanup-expired.ts';
+                  : url === '/api/cloudinary-cleanup-expired'
+                  ? '/api/cloudinary-cleanup-expired.ts'
+                  : '/api/cloudinary-process-queue.ts';
               const mod = await server.ssrLoadModule(file);
               const handler = mod.default;
               await handler(req, res);

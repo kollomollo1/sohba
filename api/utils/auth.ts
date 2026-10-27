@@ -5,13 +5,17 @@ let _serverSupabase: SupabaseClient | null = null;
 export function getServerSupabase(): SupabaseClient {
   if (!_serverSupabase) {
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      '';
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error('Supabase environment variables (VITE_SUPABASE_URL / SUPABASE_URL and VITE_SUPABASE_ANON_KEY / SUPABASE_ANON_KEY) are missing on the server.');
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Supabase environment variables (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY) are missing on the server.');
     }
 
-    _serverSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+    _serverSupabase = createClient(supabaseUrl, supabaseKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,

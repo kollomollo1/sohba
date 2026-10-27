@@ -231,7 +231,12 @@ export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppresse
       if (isCloudinaryUrl(post.image_url)) {
         if (session?.access_token) {
           try {
-            await deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+            await deletePostImageFromCloudinary(
+              post.image_url,
+              session.access_token,
+              post.id,
+              (post as any).image_public_id
+            );
           } catch (e) {
             console.warn('delete image from cloudinary error:', e);
           }
@@ -399,7 +404,12 @@ export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppresse
       if (post.image_url) {
         if (isCloudinaryUrl(post.image_url)) {
           if (session?.access_token) {
-            void deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+            void deletePostImageFromCloudinary(
+              post.image_url,
+              session.access_token,
+              post.id,
+              (post as any).image_public_id
+            );
           }
         } else if (post.image_url.includes('/media/')) {
           try {

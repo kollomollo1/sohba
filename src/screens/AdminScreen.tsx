@@ -4,7 +4,13 @@ import { ArrowLeft, Ban, Loader2, Search, Shield, Trash2, Users, FileText, Rotat
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
-import { getOptimizedPostImageUrl, deletePostImageFromCloudinary, isCloudinaryUrl } from '@/lib/cloudinary';
+import {
+  getOptimizedPostImageUrl,
+  deletePostImageFromCloudinary,
+  isCloudinaryUrl,
+  getCloudinaryQueueStats,
+  triggerCloudinaryQueueProcess,
+} from '@/lib/cloudinary';
 
 type AdminUser = {
   user_id: string;
@@ -19,13 +25,21 @@ type AdminUser = {
   access_suspended_until: string | null;
   permanently_banned: boolean;
 };
-type AdminPost = { id: string; author_id: string; body: string; image_url: string | null; created_at: string };
+type AdminPost = {
+  id: string;
+  author_id: string;
+  body: string;
+  image_url: string | null;
+  image_public_id?: string | null;
+  created_at: string;
+};
 type DemoUser = { user_id: string; full_name: string; username: string; avatar_url: string | null; created_at: string; post_count: number; last_post_at: string | null };
 type PendingPost = {
   id: string;
   author_id: string;
   body: string;
   image_url: string | null;
+  image_public_id?: string | null;
   is_urgent: boolean;
   created_at: string;
   status: string;
@@ -55,6 +69,34 @@ export function AdminScreen() {
   const [togglingAutoPost, setTogglingAutoPost] = useState(false);
   const [cleaningMedia, setCleaningMedia] = useState(false);
   const [mediaCleanupFeedback, setMediaCleanupFeedback] = useState<string | null>(null);
+  const [queueStats, setQueueStats] = useState<{ pending: number; failed: number; completed: number; skipped: number; total: number } | null>(null);
+  const [processingQueue, setProcessingQueue] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
+
+  const loadQueueStats = useCallback(async () => {
+    if (!session?.access_token) return;
+    const stats = await getCloudinaryQueueStats(session.access_token);
+    if (stats) setQueueStats(stats);
+  }, [session?.access_token]);
+
+  async function processPendingQueue() {
+    if (!session?.access_token) return;
+    setProcessingQueue(true);
+    setFeedbackNotice(null);
+    try {
+      const res = await triggerCloudinaryQueueProcess(session.access_token);
+      if (res.ok) {
+        setFeedbackNotice(res.message || 'تمت معالجة طابور الحذف بنجاح.');
+        void loadQueueStats();
+      } else {
+        setError(res.error || 'تعذّرت معالجة طابور الحذف.');
+      }
+    } catch (e: any) {
+      setError(e.message || 'خطأ أثناء معالجة طابور الحذف.');
+    } finally {
+      setProcessingQueue(false);
+    }
+  }
 
   async function cleanExpiredCloudinaryMedia() {
     if (!session?.access_token) return;
@@ -72,6 +114,7 @@ export function AdminScreen() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'تعذّر تنظيف وسائط كلاوديناري');
       setMediaCleanupFeedback(data.message || 'تم تنظيف وسائط كلاوديناري بنجاح.');
+      void loadQueueStats();
     } catch (err: any) {
       setError(err.message || 'فشل تنظيف وسائط كلاوديناري.');
     } finally {
@@ -90,6 +133,25 @@ export function AdminScreen() {
       }
     });
 
+    void loadQueueStats();
+
+    const fetchPostsPromise = (async () => {
+      let res: any = await supabase
+        .from('posts')
+        .select('id, author_id, body, image_url, image_public_id, created_at')
+        .order('created_at', { ascending: false })
+        .range(0, 199);
+
+      if (res.error && (res.error.message?.includes('image_public_id') || res.error.code === '42703')) {
+        res = await supabase
+          .from('posts')
+          .select('id, author_id, body, image_url, created_at')
+          .order('created_at', { ascending: false })
+          .range(0, 199);
+      }
+      return res;
+    })();
+
     const [
       { data: userRows, error: userError },
       { data: postRows, error: postError },
@@ -97,7 +159,7 @@ export function AdminScreen() {
       { data: demoRows, error: demoError }
     ] = await Promise.all([
       supabase.rpc('admin_user_overview'),
-      supabase.from('posts').select('id, author_id, body, image_url, created_at').order('created_at', { ascending: false }).range(0, 199),
+      fetchPostsPromise,
       supabase.rpc('admin_pending_posts'),
       supabase.rpc('admin_demo_users'),
     ]);
@@ -112,7 +174,7 @@ export function AdminScreen() {
       setHasMorePosts((postRows?.length ?? 0) === 200);
     }
     setLoading(false);
-  }, [isAdmin]);
+  }, [isAdmin, loadQueueStats]);
 
   async function loadMorePosts() {
     setBusyId('more-posts');
@@ -171,18 +233,33 @@ export function AdminScreen() {
     if (!window.confirm('حذف هذا المنشور نهائياً؟')) return;
     setBusyId(post.id);
     setError(null);
+    setFeedbackNotice(null);
     const { error: deleteError } = await supabase.rpc('admin_delete_post', { p_post_id: post.id });
     setBusyId(null);
     if (deleteError) {
       setError('تعذّر حذف المنشور: ' + deleteError.message);
     } else {
+      let notice = 'تم حذف المنشور من قاعدة البيانات بنجاح.';
       if (post.image_url) {
         if (isCloudinaryUrl(post.image_url)) {
           if (session?.access_token) {
             try {
-              await deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+              const res = await deletePostImageFromCloudinary(
+                post.image_url,
+                session.access_token,
+                post.id,
+                post.image_public_id
+              );
+              if (res.skipped) {
+                notice = 'تم حذف المنشور بنجاح، وتم الاحتفاظ بالصورة بأمان في Cloudinary لأنها مستخدمة في منشور آخر.';
+              } else if (res.ok) {
+                notice = 'تم حذف المنشور وحذف صورته من Cloudinary بنجاح.';
+              } else {
+                notice = 'تم حذف المنشور، وجُدولت صورته في طابور الحذف التلقائي لإعادة المحاولة.';
+              }
             } catch (e) {
               console.warn('delete image from cloudinary error:', e);
+              notice = 'تم حذف المنشور، وجُدولت صورته في طابور الحذف التلقائي.';
             }
           }
         } else if (post.image_url.includes('/media/')) {
@@ -197,7 +274,9 @@ export function AdminScreen() {
           }
         }
       }
+      setFeedbackNotice(notice);
       setPosts((prev) => prev.filter((item) => item.id !== post.id));
+      void loadQueueStats();
     }
   }
 
@@ -218,6 +297,7 @@ export function AdminScreen() {
     if (!window.confirm('رفض هذا المنشور وحذفه نهائياً؟')) return;
     setBusyId(postId);
     setError(null);
+    setFeedbackNotice(null);
 
     const pending = pendingPosts.find((p) => p.id === postId);
 
@@ -226,13 +306,27 @@ export function AdminScreen() {
     if (rejErr) {
       setError('تعذر رفض المنشور: ' + rejErr.message);
     } else {
+      let notice = 'تم رفض المنشور وحذفه بنجاح.';
       if (pending?.image_url) {
         if (isCloudinaryUrl(pending.image_url)) {
           if (session?.access_token) {
             try {
-              await deletePostImageFromCloudinary(pending.image_url, session.access_token, postId);
+              const res = await deletePostImageFromCloudinary(
+                pending.image_url,
+                session.access_token,
+                postId,
+                pending.image_public_id
+              );
+              if (res.skipped) {
+                notice = 'تم رفض المنشور بنجاح، وتم الاحتفاظ بالصورة لأنها مستخدمة في منشور آخر.';
+              } else if (res.ok) {
+                notice = 'تم رفض المنشور وحذف صورته من Cloudinary بنجاح.';
+              } else {
+                notice = 'تم رفض المنشور، وجُدولت صورته في طابور الحذف التلقائي لإعادة المحاولة.';
+              }
             } catch (e) {
               console.warn('delete image from cloudinary error:', e);
+              notice = 'تم رفض المنشور، وجُدولت صورته في طابور الحذف التلقائي.';
             }
           }
         } else if (pending.image_url.includes('/media/')) {
@@ -247,8 +341,10 @@ export function AdminScreen() {
           }
         }
       }
+      setFeedbackNotice(notice);
       setPendingPosts((prev) => prev.filter((p) => p.id !== postId));
       void load();
+      void loadQueueStats();
     }
   }
 
@@ -393,6 +489,12 @@ export function AdminScreen() {
         <input value={query} onChange={(event) => setQuery(event.target.value)} className="input-field pr-9" placeholder={tab === 'users' ? 'ابحث بالاسم أو اسم المستخدم' : 'ابحث في نص المنشور أو اسم صاحبه'} />
       </label>}
       {error && <p className="card text-sm text-error">{error}</p>}
+      {feedbackNotice && (
+        <div className="card flex items-center justify-between border-primary/20 bg-primary-50/40 p-3 text-xs font-semibold text-primary">
+          <span>{feedbackNotice}</span>
+          <button onClick={() => setFeedbackNotice(null)} className="text-xs text-ink-muted hover:text-ink">إغلاق</button>
+        </div>
+      )}
       {loading ? <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div> : tab === 'users' ? (
         <div className="space-y-2">
           {filteredUsers.map((user) => {
@@ -491,27 +593,57 @@ export function AdminScreen() {
         </section>
       ) : tab === 'demo' ? (
         <section className="space-y-3">
-          {/* Cloudinary Expired Media Auto-Cleaner */}
+          {/* Cloudinary Deletion Queue & Maintenance */}
           <div className="card space-y-3 border-primary/20 bg-primary-50/20">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-ink flex items-center gap-2">
-                  <RotateCcw className="h-4 w-4 text-primary" />
-                  صيانة وسائط كلاوديناري المنتهية (24 ساعة)
-                </h3>
-                <p className="text-xs text-ink-muted mt-1 leading-relaxed">
-                  يقوم Vercel Cron بحذف الصور الأقدم من 24 ساعة تلقائياً يومياً. يمكنك أيضاً الضغط هنا لتفريغ وحذف جميع صور المنشورات المنتهية فوراً وتوفير رصيدك.
-                </p>
+            <div>
+              <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+                <RotateCcw className="h-4 w-4 text-primary" />
+                طابور حذف وسائط Cloudinary والصيانة التلقائية
+              </h3>
+              <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                يتم تسجيل كل منشور محذوف في طابور الحذف الآمن وحذف صورته من Cloudinary فوراً أو إعادة المحاولة تلقائياً.
+              </p>
+            </div>
+
+            {/* Queue stats badges */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="rounded-xl border border-surface-dim bg-surface p-2 text-center">
+                <span className="text-[11px] text-ink-muted block">معلّقة</span>
+                <span className="font-bold text-ink">{queueStats?.pending ?? 0}</span>
               </div>
+              <div className="rounded-xl border border-surface-dim bg-surface p-2 text-center">
+                <span className="text-[11px] text-ink-muted block">يعاد محاولتها</span>
+                <span className="font-bold text-amber-600">{queueStats?.failed ?? 0}</span>
+              </div>
+              <div className="rounded-xl border border-surface-dim bg-surface p-2 text-center">
+                <span className="text-[11px] text-ink-muted block">مكتملة الحذف</span>
+                <span className="font-bold text-emerald-600">{queueStats?.completed ?? 0}</span>
+              </div>
+              <div className="rounded-xl border border-surface-dim bg-surface p-2 text-center">
+                <span className="text-[11px] text-ink-muted block">مشتركة (مستبقاة)</span>
+                <span className="font-bold text-blue-600">{queueStats?.skipped ?? 0}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                disabled={processingQueue || busyId !== null}
+                onClick={() => void processPendingQueue()}
+                className="btn-primary py-2 px-3 text-xs font-bold"
+              >
+                {processingQueue ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                معالجة طابور الحذف الآن
+              </button>
               <button
                 disabled={cleaningMedia || busyId !== null}
                 onClick={() => void cleanExpiredCloudinaryMedia()}
-                className="btn-primary py-2 px-4 text-xs font-bold shrink-0 self-start sm:self-auto"
+                className="btn-secondary py-2 px-3 text-xs font-bold"
               >
-                {cleaningMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                تنظيف الصور المنتهية الآن
+                {cleaningMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                تنظيف الصور المنتهية (&gt; 24 س)
               </button>
             </div>
+
             {mediaCleanupFeedback && (
               <p className="rounded-xl bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                 {mediaCleanupFeedback}

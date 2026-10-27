@@ -1,6 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { v2 as cloudinary } from 'cloudinary';
-import { authenticateUser, checkIfUserIsAdmin, createUserSupabase } from './utils/auth.js';
+import { authenticateUser, checkIfUserIsAdmin, getServerSupabase } from './utils/auth.js';
+import {
+  destroyCloudinaryImage,
+  isImageReferencedByOtherPosts,
+  processCloudinaryDeletionQueue,
+} from './utils/cloudinary-queue.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -21,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let targetPublicId = publicId;
   if (!targetPublicId && imageUrl && typeof imageUrl === 'string') {
     // Cloudinary URL format: .../image/upload/(v[0-9]+/)?(sohba/posts/...)(.[a-z]+)?
-    const match = imageUrl.match(/\/upload\/(?:v\d+\/)?([^\.\?]+)(?:\.[a-zA-Z0-9]+)?/);
+    const match = imageUrl.match(/\/upload\/(?:v\d+\/)?([^\.\?#]+)(?:\.[a-zA-Z0-9]+)?/);
     if (match && match[1]) {
       targetPublicId = decodeURIComponent(match[1]);
     }
@@ -29,6 +33,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!targetPublicId || typeof targetPublicId !== 'string') {
     return res.status(400).json({ error: 'معرّف الصورة العام (public_id) مطلوب.' });
+  }
+
+  // Validate that the target publicId belongs to Sohba posts
+  if (!targetPublicId.startsWith('sohba/posts/')) {
+    return res.status(400).json({ error: 'مسار الصورة غير صالح؛ يجب أن يكون ضمن صور المنشورات.' });
   }
 
   // 2. Validate user authorization: must be admin or the folder owner
@@ -41,21 +50,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // 3. Verify that no OTHER post is referencing this image
-  try {
-    const userSupabase = createUserSupabase(authHeader);
-    let query = userSupabase.from('posts').select('id', { count: 'exact', head: true });
-    if (postId) {
-      query = query.neq('id', postId);
-    }
-    // Check if targetPublicId is contained in any other post's image_url
-    query = query.ilike('image_url', `%${targetPublicId}%`);
+  const serverClient = getServerSupabase();
 
-    const { count } = await query;
-    if (typeof count === 'number' && count > 0) {
-      // Image is still referenced by another post, safely skip deleting from Cloudinary
+  // 3. Check if any OTHER active post is referencing this image
+  try {
+    const isShared = await isImageReferencedByOtherPosts(serverClient, targetPublicId, postId);
+    if (isShared) {
+      // Mark any queue item as skipped
+      try {
+        await serverClient
+          .from('cloudinary_deletion_queue')
+          .update({
+            status: 'skipped',
+            error_message: 'الصورة مستخدمة في منشور آخر؛ تم الاحتفاظ بها بأمان في Cloudinary.',
+            last_attempt_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('image_public_id', targetPublicId);
+      } catch {}
+
       return res.status(200).json({
         ok: true,
+        deleted: false,
         skipped: true,
         message: 'الصورة مستخدمة في منشور آخر؛ تم الاحتفاظ بها بأمان في Cloudinary.',
       });
@@ -64,37 +80,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.warn('[cloudinary-delete] Conflict check warning:', checkErr);
   }
 
-  // 4. Validate Cloudinary credentials
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  const apiKey = process.env.CLOUDINARY_API_KEY;
-  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  // 4. Destroy the image using Cloudinary API
+  const destroyRes = await destroyCloudinaryImage(targetPublicId);
 
-  if (!cloudName || !apiKey || !apiSecret) {
-    console.error('[cloudinary-delete] Cloudinary credentials missing on server');
-    return res.status(500).json({
-      error: 'إعدادات Cloudinary غير مكتملة على الخادم.',
-    });
-  }
+  if (destroyRes.success) {
+    // Mark matching queue records as completed
+    try {
+      await serverClient
+        .from('cloudinary_deletion_queue')
+        .update({
+          status: 'completed',
+          error_message: null,
+          last_attempt_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('image_public_id', targetPublicId);
+    } catch {}
 
-  cloudinary.config({
-    cloud_name: cloudName,
-    api_key: apiKey,
-    api_secret: apiSecret,
-    secure: true,
-  });
-
-  try {
-    const destroyRes = await cloudinary.uploader.destroy(targetPublicId, {
-      resource_type: 'image',
-      invalidate: true,
-    });
+    // Trigger lightweight queue drain in background (fire-and-forget)
+    void processCloudinaryDeletionQueue({ limit: 5, client: serverClient }).catch(() => {});
 
     return res.status(200).json({
       ok: true,
+      deleted: true,
       result: destroyRes.result,
+      message: 'تم حذف الصورة من Cloudinary بنجاح.',
     });
-  } catch (err: any) {
-    console.error('[cloudinary-delete] Deletion failed:', err);
-    return res.status(500).json({ error: 'فشل حذف الصورة من Cloudinary: ' + (err.message || String(err)) });
+  } else {
+    // If destroy failed, ensure queue has a record for automated retry
+    try {
+      await serverClient.from('cloudinary_deletion_queue').upsert(
+        {
+          post_id: postId || null,
+          author_id: user.id,
+          image_public_id: targetPublicId,
+          image_url: imageUrl || null,
+          status: 'failed',
+          attempts: 1,
+          next_retry_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+          error_message: destroyRes.error || `Destroy returned ${destroyRes.result}`,
+          last_attempt_at: new Date().toISOString(),
+        },
+        { onConflict: 'image_public_id' }
+      );
+    } catch {}
+
+    return res.status(500).json({
+      ok: false,
+      deleted: false,
+      error: `فشل حذف الصورة من Cloudinary: ${destroyRes.error || destroyRes.result}. تمت جدولة العملية في طابور إعادة المحاولة التلقائي.`,
+    });
   }
 }
