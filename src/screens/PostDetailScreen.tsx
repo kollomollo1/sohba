@@ -151,7 +151,7 @@ export function PostDetailScreen() {
       </header>
 
       <main className="app-body space-y-3 p-3">
-        <PostCard post={post} onLikeToggled={onDetailLikeToggled} onDeleted={() => navigate('/')} onSuppressed={() => navigate('/')} />
+        <PostCard post={post} isDetail={true} onLikeToggled={onDetailLikeToggled} onDeleted={() => navigate('/')} onSuppressed={() => navigate('/')} />
 
         {/* Like bar */}
         <div className="card flex items-center gap-3">

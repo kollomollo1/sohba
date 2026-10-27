@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle, Forward, Flame, MoreHorizontal, Trash2, UserPlus, BadgeCheck, Loader2, X, EyeOff, Ban, Pencil, Flag, Send, Clock, UserX } from 'lucide-react';
+import { MessageCircle, Forward, Flame, MoreHorizontal, Trash2, UserPlus, BadgeCheck, Loader2, X, EyeOff, Ban, Pencil, Flag, Send, Clock, UserX, Maximize2 } from 'lucide-react';
 import type { FeedPost, LikeReaction } from '@/types';
 import { Avatar } from '@/components/Avatar';
 import { CommentsModal } from '@/components/CommentsModal';
@@ -13,6 +13,7 @@ import { getOptimizedPostImageUrl, deletePostImageFromCloudinary, isCloudinaryUr
 
 type Props = {
   post: FeedPost;
+  isDetail?: boolean;
   onLikeToggled?: (id: string, liked: boolean, count: number, reaction: LikeReaction | null) => void;
   onDeleted?: (id: string) => void;
   onSuppressed?: (postId: string, authorId: string, scope: 'post' | 'author') => void;
@@ -38,7 +39,7 @@ function changeReactionCounts(
   return updated;
 }
 
-export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friendship, onFriendshipChanged }: Props) {
+export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppressed, friendship, onFriendshipChanged }: Props) {
   const navigate = useNavigate();
   const { profile, session } = useAuth();
   const isAdmin = session?.user.app_metadata?.role === 'admin';
@@ -49,6 +50,7 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
   const [likeAnim, setLikeAnim] = useState(false);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [friendBusy, setFriendBusy] = useState(false);
   const [friendError, setFriendError] = useState<string | null>(null);
@@ -90,6 +92,15 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [lightboxOpen]);
 
   useEffect(() => {
     let active = true;
@@ -715,7 +726,7 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
                 <img
                   src={getOptimizedPostImageUrl(sharedPost.image_url, { width: 640 })}
                   alt=""
-                  className="mt-2 max-h-64 w-full rounded-lg object-cover"
+                  className="mt-2 max-h-80 w-full rounded-lg object-contain bg-surface-subtle/50"
                   loading="lazy"
                 />
               )}
@@ -729,17 +740,41 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
 
         {/* Image */}
         {post.image_url && (
-          <button
-            onClick={() => navigate(`/post/${post.id}`)}
-            className="mt-3 block w-full overflow-hidden rounded-xl bg-surface-subtle"
-          >
-            <img
-              src={getOptimizedPostImageUrl(post.image_url, { width: 1080 })}
-              alt=""
-              className="max-h-80 w-full object-cover"
-              loading="lazy"
-            />
-          </button>
+          <div className="relative mt-3 w-full overflow-hidden rounded-2xl border border-surface-dim/70 bg-surface-subtle group">
+            <button
+              type="button"
+              onClick={() => {
+                if (isDetail) {
+                  setLightboxOpen(true);
+                } else {
+                  setLightboxOpen(true);
+                }
+              }}
+              className="block w-full cursor-zoom-in text-center focus:outline-none"
+              title="انقر لعرض الصورة بالحجم الكامل"
+            >
+              <img
+                src={getOptimizedPostImageUrl(post.image_url, { width: 1200 })}
+                alt="صورة المنشور"
+                className={`w-full mx-auto object-contain transition-all duration-200 ${
+                  isDetail ? 'max-h-[75vh]' : 'max-h-[520px]'
+                }`}
+                loading="lazy"
+              />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxOpen(true);
+              }}
+              className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 rounded-full bg-ink/75 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm hover:bg-ink transition shadow-sm"
+              title="عرض بالحجم الكامل"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              <span>عرض كامل</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -820,6 +855,35 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
                 </div>}
             {shareError && <p className="mt-3 rounded-xl bg-error-50 px-3 py-2 text-sm text-error">{shareError}</p>}
           </section>
+        </div>
+      )}
+      {/* Full-Screen Image Lightbox Modal */}
+      {lightboxOpen && post.image_url && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-2 sm:p-4 animate-fade-in"
+          onClick={() => setLightboxOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-4 left-4 z-[110] flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition shadow-lg backdrop-blur-sm"
+            aria-label="إغلاق"
+            title="إغلاق (Esc)"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <div
+            className="relative max-h-full max-w-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={getOptimizedPostImageUrl(post.image_url, { width: 1800 })}
+              alt="صورة المنشور بالحجم الكامل"
+              className="max-h-[92vh] max-w-[96vw] object-contain rounded-xl shadow-2xl select-none"
+            />
+          </div>
         </div>
       )}
     </article>

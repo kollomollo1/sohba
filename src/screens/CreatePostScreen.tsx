@@ -267,7 +267,7 @@ export function CreatePostScreen() {
 
           {imagePreview ? (
             <div className="relative overflow-hidden rounded-2xl border border-surface-dim bg-surface-subtle">
-              <img src={imagePreview} alt="معاينة الصورة" className="max-h-72 w-full object-cover" />
+              <img src={imagePreview} alt="معاينة الصورة" className="max-h-96 w-full object-contain mx-auto bg-surface-subtle" />
               {submitting && uploadProgress !== null && (
                 <div className="absolute inset-0 bg-ink/50 backdrop-blur-[2px] flex flex-col items-center justify-center p-4 z-10">
                   <div className="w-full max-w-xs bg-surface-dim/80 rounded-full h-3 overflow-hidden shadow-inner">

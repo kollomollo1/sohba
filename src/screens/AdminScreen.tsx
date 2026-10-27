@@ -453,7 +453,7 @@ export function AdminScreen() {
                     <img
                       src={getOptimizedPostImageUrl(post.image_url, { width: 800 })}
                       alt="مرفق المنشور"
-                      className="max-h-80 w-full object-cover"
+                      className="max-h-96 w-full object-contain mx-auto bg-surface-subtle"
                       loading="lazy"
                     />
                   </div>
@@ -611,7 +611,7 @@ export function AdminScreen() {
                 <img
                   src={getOptimizedPostImageUrl(post.image_url, { width: 640 })}
                   alt=""
-                  className="max-h-64 w-full rounded-xl object-cover"
+                  className="max-h-80 w-full rounded-xl object-contain bg-surface-subtle"
                   loading="lazy"
                 />
               )}

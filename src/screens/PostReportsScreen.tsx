@@ -293,7 +293,7 @@ export function PostReportsScreen() {
                     <img
                       src={getOptimizedPostImageUrl(report.post_image_url, { width: 800 })}
                       alt="مرفق المنشور"
-                      className="max-h-60 w-full object-cover"
+                      className="max-h-80 w-full object-contain mx-auto bg-surface-subtle"
                       loading="lazy"
                     />
                   </div>
