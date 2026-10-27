@@ -738,6 +738,7 @@ export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppresse
                   alt=""
                   className="mt-2 max-h-80 w-full rounded-lg object-contain bg-surface-subtle/50"
                   loading="lazy"
+                decoding="async"
                 />
               )}
             </> : <span className="text-sm text-ink-muted">جارٍ تحميل المنشور...</span>}
@@ -770,6 +771,7 @@ export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppresse
                   isDetail ? 'max-h-[75vh]' : 'max-h-[520px]'
                 }`}
                 loading="lazy"
+                decoding="async"
               />
             </button>
             <button

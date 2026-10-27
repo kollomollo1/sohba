@@ -22,6 +22,12 @@ export function HomeFeedScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [friendships, setFriendships] = useState<Record<string, FriendStatus>>({});
 
+  const cursorRef = useRef<string | null>(null);
+  const loadingRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
   // Pull-to-refresh state
   const [pullY, setPullY] = useState(0);
   const [isPulling, setIsPulling] = useState(false);
@@ -61,14 +67,20 @@ export function HomeFeedScreen() {
     async (reset: boolean, currentFilter: Filter) => {
       if (reset) {
         setLoading(true);
+        loadingRef.current = true;
         setError(null);
+        cursorRef.current = null;
+        hasMoreRef.current = true;
+        setHasMore(true);
       } else {
+        if (loadingRef.current || loadingMoreRef.current || !hasMoreRef.current) return;
         setLoadingMore(true);
+        loadingMoreRef.current = true;
       }
 
       const friendsOnly = false;
       const limit = 20;
-      const cursorArg = reset ? new Date().toISOString() : cursor;
+      const cursorArg = reset ? new Date().toISOString() : cursorRef.current;
 
       const feedRequest = supabase.rpc('feed', {
         p_limit: limit,
@@ -93,7 +105,9 @@ export function HomeFeedScreen() {
               : `تعذّر تحميل المنشورات: ${rpcError.message}`,
         );
         setLoading(false);
+        loadingRef.current = false;
         setLoadingMore(false);
+        loadingMoreRef.current = false;
         return;
       }
 
@@ -128,16 +142,46 @@ export function HomeFeedScreen() {
 
       setPosts((prev) => (reset ? visible : [...prev, ...visible]));
       if (rows.length > 0) {
-        setCursor(rows[rows.length - 1].created_at);
+        const lastCreatedAt = rows[rows.length - 1].created_at;
+        cursorRef.current = lastCreatedAt;
+        setCursor(lastCreatedAt);
       } else if (reset) {
+        cursorRef.current = null;
         setCursor(null);
       }
-      setHasMore(rows.length === limit && (currentFilter === 'all' || visible.length === rows.length));
+      const moreAvailable = rows.length === limit;
+      hasMoreRef.current = moreAvailable;
+      setHasMore(moreAvailable);
       setLoading(false);
+      loadingRef.current = false;
       setLoadingMore(false);
+      loadingMoreRef.current = false;
     },
-    [cursor, profile?.id],
+    [profile?.id],
   );
+
+  // ── Automatic Infinite Scroll (Lazy Loading on Scroll) ───────────────────
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && hasMoreRef.current && !loadingRef.current && !loadingMoreRef.current) {
+          void loadFeed(false, filter);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '350px', // Preload 350px before reaching the end of page
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadFeed, filter]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -423,22 +467,23 @@ export function HomeFeedScreen() {
           </div>
         )}
 
-        {/* Load more */}
-        {!loading && hasMore && posts.length > 0 && (
-          <button
-            onClick={() => void loadFeed(false, filter)}
-            disabled={loadingMore}
-            className="btn-ghost mx-auto flex w-full items-center justify-center gap-2 py-3"
-          >
+        {/* Infinite Scroll Sentinel & Automatic Indicator */}
+        {!loading && posts.length > 0 && (
+          <div ref={sentinelRef} className="py-4 text-center">
             {loadingMore ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                جارٍ التحميل...
-              </>
+              <div className="flex items-center justify-center gap-2 text-xs font-semibold text-ink-muted py-2">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span>جارٍ تحميل المزيد من المنشورات...</span>
+              </div>
+            ) : hasMore ? (
+              <div className="h-6" />
             ) : (
-              'تحميل المزيد'
+              <div className="flex flex-col items-center gap-1 text-xs text-ink-muted py-4">
+                <span className="font-semibold text-ink-soft">وصلت لآخر المنشورات ✨</span>
+                <span className="text-[11px] text-ink-faint">هذه كل منشورات صُحبتك خلال الـ 24 ساعة الماضية</span>
+              </div>
             )}
-          </button>
+          </div>
         )}
       </main>
     </div>
