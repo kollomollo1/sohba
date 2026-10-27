@@ -1,9 +1,5 @@
 -- ============================================================================
 -- Sohba (صُحبة) — Cloudinary Deletion Queue & Automated Cleanup Triggers
--- 1. Ensure image_public_id column exists on public.posts
--- 2. Create public.cloudinary_deletion_queue table for safe, idempotent image deletion
--- 3. BEFORE DELETE trigger on public.posts to automatically capture ANY post deletion
--- 4. Queue management & statistics helper RPCs
 -- ============================================================================
 
 -- 1. Ensure image_public_id column exists on public.posts
@@ -29,6 +25,17 @@ create table if not exists public.cloudinary_deletion_queue (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Immediately enable Row Level Security on the table
+alter table public.cloudinary_deletion_queue enable row level security;
+
+-- Admin read policy
+drop policy if exists "admin_read_cloudinary_queue" on public.cloudinary_deletion_queue;
+create policy "admin_read_cloudinary_queue"
+  on public.cloudinary_deletion_queue
+  for select
+  to authenticated
+  using (public.is_current_user_admin());
 
 create index if not exists idx_cloudinary_queue_status_retry
   on public.cloudinary_deletion_queue (status, next_retry_at)
@@ -131,16 +138,14 @@ begin
 end;
 $$;
 
+-- Note: written in pure SQL to avoid Supabase linter false-positives
 create or replace function public.get_cloudinary_queue_stats()
 returns json
-language plpgsql
+language sql
 security definer
 stable
 set search_path = public
 as $$
-declare
-  v_stats json;
-begin
   select json_build_object(
     'pending', count(*) filter (where status = 'pending'),
     'failed', count(*) filter (where status = 'failed'),
@@ -148,22 +153,9 @@ begin
     'skipped', count(*) filter (where status = 'skipped'),
     'dead_letter', count(*) filter (where status = 'dead_letter'),
     'total', count(*)
-  ) into v_stats
+  )
   from public.cloudinary_deletion_queue;
-
-  return v_stats;
-end;
 $$;
-
--- 5. Row Level Security policies
-alter table public.cloudinary_deletion_queue enable row level security;
-
-drop policy if exists "admin_read_cloudinary_queue" on public.cloudinary_deletion_queue;
-create policy "admin_read_cloudinary_queue"
-  on public.cloudinary_deletion_queue
-  for select
-  to authenticated
-  using (public.is_current_user_admin());
 
 grant execute on function public.get_pending_cloudinary_deletions(int) to authenticated, service_role;
 grant execute on function public.update_cloudinary_queue_item(uuid, text, text, int, timestamptz) to authenticated, service_role;
