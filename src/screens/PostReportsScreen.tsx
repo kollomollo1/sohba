@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Flag, Loader2, Trash2, Check, ExternalLink, Search, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
+import { getOptimizedPostImageUrl } from '@/lib/cloudinary';
 
 type ReportRow = {
   id: string;
@@ -266,7 +267,12 @@ export function PostReportsScreen() {
 
                 {report.post_image_url && (
                   <div className="overflow-hidden rounded-xl border border-surface-dim bg-surface-subtle">
-                    <img src={report.post_image_url} alt="مرفق المنشور" className="max-h-60 w-full object-cover" />
+                    <img
+                      src={getOptimizedPostImageUrl(report.post_image_url, { width: 800 })}
+                      alt="مرفق المنشور"
+                      className="max-h-60 w-full object-cover"
+                      loading="lazy"
+                    />
                   </div>
                 )}
 

@@ -5,6 +5,12 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
 import { compressPostImage } from '@/lib/imageCompression';
+import {
+  uploadPostImageToCloudinary,
+  deletePostImageFromCloudinary,
+  ALLOWED_IMAGE_TYPES,
+  MAX_IMAGE_FILE_SIZE_BYTES,
+} from '@/lib/cloudinary';
 import type { FeedPost } from '@/types';
 
 export function CreatePostScreen() {
@@ -17,6 +23,7 @@ export function CreatePostScreen() {
   const [originalImageSize, setOriginalImageSize] = useState<number | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(editPost?.image_url ?? null);
   const [compressing, setCompressing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isUrgent, setIsUrgent] = useState(!isGuest && (editPost?.is_urgent ?? false));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +33,19 @@ export function CreatePostScreen() {
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
+      setError('حجم الصورة كبير جدًا؛ الحد الأقصى المسموح به هو 10 ميجابايت.');
+      return;
+    }
+
+    const fileType = file.type.toLowerCase();
+    const isImage = fileType.startsWith('image/') || ALLOWED_IMAGE_TYPES.some((t) => fileType.includes(t));
+    if (!isImage) {
+      setError('نوع الملف غير مدعوم. يرجى اختيار ملف صورة صالح (JPG, PNG, WEBP, GIF).');
+      return;
+    }
+
     setCompressing(true);
     setError(null);
     try {
@@ -48,6 +68,7 @@ export function CreatePostScreen() {
       return;
     }
     setSubmitting(true);
+    setUploadProgress(null);
     setError(null);
 
     const { data: authData, error: authError } = await supabase.auth.getSession();
@@ -79,32 +100,55 @@ export function CreatePostScreen() {
     }
 
     let uploadedImageUrl: string | null = null;
+    let uploadedPublicId: string | null = null;
     if (imageFile) {
-      const filePath = `posts/${profile.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-      const { error: uploadErr } = await supabase.storage.from('media').upload(filePath, imageFile, {
-        contentType: 'image/jpeg',
-        upsert: false,
-      });
-      if (uploadErr) {
-        console.error('Upload image failed', uploadErr);
+      try {
+        setUploadProgress(0);
+        const uploadResult = await uploadPostImageToCloudinary(
+          imageFile,
+          authData.session.access_token,
+          (percent) => setUploadProgress(percent)
+        );
+        uploadedImageUrl = uploadResult.url;
+        uploadedPublicId = uploadResult.publicId;
+      } catch (uploadErr: any) {
+        console.error('Upload image to Cloudinary failed', uploadErr);
         setSubmitting(false);
-        setError('تعذّر رفع الصورة: ' + uploadErr.message);
+        setUploadProgress(null);
+        setError(uploadErr.message || 'تعذّر رفع الصورة إلى Cloudinary. يرجى التحقق من الاتصال والمحاولة مجددًا.');
         return;
       }
-      const { data: pubData } = supabase.storage.from('media').getPublicUrl(filePath);
-      uploadedImageUrl = pubData.publicUrl;
     }
 
-    const insertRequest = supabase
-      .from('posts')
-      .insert({
-        author_id: profile!.id,
-        body: body.trim(),
-        image_url: uploadedImageUrl,
-        is_urgent: !isGuest && isUrgent,
-      })
-      .select('id')
-      .single();
+    const basePayload = {
+      author_id: profile!.id,
+      body: body.trim(),
+      image_url: uploadedImageUrl,
+      is_urgent: !isGuest && isUrgent,
+    };
+
+    const insertRequest = (async () => {
+      // 1. Try insert with image_public_id if present
+      let res = await supabase
+        .from('posts')
+        .insert({
+          ...basePayload,
+          ...(uploadedPublicId ? { image_public_id: uploadedPublicId } : {}),
+        })
+        .select('id')
+        .single();
+
+      // 2. If image_public_id column doesn't exist yet in Supabase schema, fallback to base payload
+      if (res.error && (res.error.message?.includes('image_public_id') || res.error.code === 'PGRST204')) {
+        res = await supabase
+          .from('posts')
+          .insert(basePayload)
+          .select('id')
+          .single();
+      }
+
+      return res;
+    })();
 
     const timeoutRequest = new Promise<Awaited<typeof insertRequest>>((resolve) => {
       setTimeout(() => resolve({
@@ -115,9 +159,19 @@ export function CreatePostScreen() {
     const { data, error: insErr } = await Promise.race([insertRequest, timeoutRequest]);
 
     setSubmitting(false);
+    setUploadProgress(null);
 
     if (insErr) {
       console.error('create post failed', { code: insErr.code, message: insErr.message, details: insErr.details, hint: insErr.hint });
+
+      // Clean up orphaned uploaded image from Cloudinary if post insertion failed
+      if (uploadedPublicId || uploadedImageUrl) {
+        void deletePostImageFromCloudinary(
+          uploadedPublicId || uploadedImageUrl!,
+          authData.session.access_token
+        );
+      }
+
       const msg = insErr.message || '';
       if (insErr.code === 'TIMEOUT') {
         setError('انتهت مهلة الاتصال بقاعدة البيانات. تحقق من إعدادات Supabase ثم حاول مجددًا.');
@@ -163,7 +217,20 @@ export function CreatePostScreen() {
             disabled={!canSubmit || submitting}
             className="btn-primary mr-auto px-5 py-2"
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : editPost ? 'حفظ' : 'نشر'}
+            {submitting ? (
+              uploadProgress !== null ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{uploadProgress}%</span>
+                </span>
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )
+            ) : editPost ? (
+              'حفظ'
+            ) : (
+              'نشر'
+            )}
           </button>
         </div>
       </header>
@@ -201,6 +268,19 @@ export function CreatePostScreen() {
           {imagePreview ? (
             <div className="relative overflow-hidden rounded-2xl border border-surface-dim bg-surface-subtle">
               <img src={imagePreview} alt="معاينة الصورة" className="max-h-72 w-full object-cover" />
+              {submitting && uploadProgress !== null && (
+                <div className="absolute inset-0 bg-ink/50 backdrop-blur-[2px] flex flex-col items-center justify-center p-4 z-10">
+                  <div className="w-full max-w-xs bg-surface-dim/80 rounded-full h-3 overflow-hidden shadow-inner">
+                    <div
+                      className="bg-primary h-full transition-all duration-200"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <span className="mt-2 text-xs font-bold text-white drop-shadow">
+                    جارٍ رفع وتحسين الصورة عبر Cloudinary ({uploadProgress}%)
+                  </span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => {

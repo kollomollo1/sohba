@@ -9,6 +9,7 @@ import { timeAgo } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { showUndo } from '@/components/UndoToast';
+import { getOptimizedPostImageUrl, deletePostImageFromCloudinary, isCloudinaryUrl } from '@/lib/cloudinary';
 
 type Props = {
   post: FeedPost;
@@ -192,18 +193,6 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
     setBusy(true);
     setDeleteError(null);
 
-    if (post.image_url) {
-      try {
-        const match = post.image_url.match(/\/media\/(.+)$/);
-        if (match) {
-          const storagePath = decodeURIComponent(match[1].split('?')[0]);
-          void supabase.storage.from('media').remove([storagePath]);
-        }
-      } catch (imgErr) {
-        console.warn('delete image from storage failed:', imgErr);
-      }
-    }
-
     // 1. Try unified secure delete_post RPC first (works for both author and admin)
     let { error } = await supabase.rpc('delete_post', { p_post_id: post.id });
 
@@ -225,6 +214,26 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
       setDeleteError(error.message || 'تعذّر حذف المنشور. حاول مرة أخرى.');
       return;
     }
+
+    // 3. Post record deleted successfully; now safely delete the image from Cloudinary or Supabase Storage
+    if (post.image_url) {
+      if (isCloudinaryUrl(post.image_url)) {
+        if (session?.access_token) {
+          void deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+        }
+      } else if (post.image_url.includes('/media/')) {
+        try {
+          const match = post.image_url.match(/\/media\/(.+)$/);
+          if (match) {
+            const storagePath = decodeURIComponent(match[1].split('?')[0]);
+            void supabase.storage.from('media').remove([storagePath]);
+          }
+        } catch (imgErr) {
+          console.warn('delete image from storage failed:', imgErr);
+        }
+      }
+    }
+
     onDeleted?.(post.id);
     if (!onDeleted) navigate('/');
   }
@@ -372,15 +381,21 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
       }
 
       // Clean storage for the current post as an immediate client-side dual guarantee
-      if (post.image_url && post.image_url.includes('/media/')) {
-        try {
-          const match = post.image_url.match(/\/media\/(.+)$/);
-          if (match) {
-            const storagePath = decodeURIComponent(match[1].split('?')[0]);
-            void supabase.storage.from('media').remove([storagePath]);
+      if (post.image_url) {
+        if (isCloudinaryUrl(post.image_url)) {
+          if (session?.access_token) {
+            void deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
           }
-        } catch (imgErr) {
-          console.warn('delete image from storage failed:', imgErr);
+        } else if (post.image_url.includes('/media/')) {
+          try {
+            const match = post.image_url.match(/\/media\/(.+)$/);
+            if (match) {
+              const storagePath = decodeURIComponent(match[1].split('?')[0]);
+              void supabase.storage.from('media').remove([storagePath]);
+            }
+          } catch (imgErr) {
+            console.warn('delete image from storage failed:', imgErr);
+          }
         }
       }
 
@@ -692,7 +707,14 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
                 {sharedPost.author_name}
               </span>
               {sharedPost.body && <span className="block whitespace-pre-wrap break-words text-sm leading-relaxed text-ink font-noto">{sharedPost.body}</span>}
-              {sharedPost.image_url && <img src={sharedPost.image_url} alt="" className="mt-2 max-h-64 w-full rounded-lg object-cover" />}
+              {sharedPost.image_url && (
+                <img
+                  src={getOptimizedPostImageUrl(sharedPost.image_url, { width: 640 })}
+                  alt=""
+                  className="mt-2 max-h-64 w-full rounded-lg object-cover"
+                  loading="lazy"
+                />
+              )}
             </> : <span className="text-sm text-ink-muted">جارٍ تحميل المنشور...</span>}
           </button>
         ) : post.body && (
@@ -708,7 +730,7 @@ export function PostCard({ post, onLikeToggled, onDeleted, onSuppressed, friends
             className="mt-3 block w-full overflow-hidden rounded-xl bg-surface-subtle"
           >
             <img
-              src={post.image_url}
+              src={getOptimizedPostImageUrl(post.image_url, { width: 1080 })}
               alt=""
               className="max-h-80 w-full object-cover"
               loading="lazy"

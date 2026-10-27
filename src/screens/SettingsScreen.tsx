@@ -15,6 +15,7 @@ export function SettingsScreen() {
   const { profile, signOut, isGuest, session } = useAuth();
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(true);
+  const [blockedError, setBlockedError] = useState<string | null>(null);
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [profileReports, setProfileReports] = useState<ProfileReport[]>([]);
   const [reportsError, setReportsError] = useState<string | null>(null);

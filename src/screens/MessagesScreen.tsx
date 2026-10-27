@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
+import { getOptimizedPostImageUrl } from '@/lib/cloudinary';
 
 type DirectMessage = {
   id: string;
@@ -160,7 +161,14 @@ export function MessagesScreen() {
                 {message.shared_post_id && message.shared_post && <button onClick={() => navigate(`/post/${message.shared_post_id}`)} className="mt-2 block w-full rounded-xl border border-surface-dim/40 bg-white/10 p-3 text-right">
                   <span className="mb-2 flex items-center gap-2 text-xs font-bold"><Avatar name={message.shared_post.author_name} src={message.shared_post.author_avatar} size={28} />منشور من {message.shared_post.author_name}</span>
                   {message.shared_post.body && <span className="block whitespace-pre-wrap break-words text-sm">{message.shared_post.body}</span>}
-                  {message.shared_post.image_url && <img src={message.shared_post.image_url} alt="" className="mt-2 max-h-48 w-full rounded-lg object-cover" />}
+                  {message.shared_post.image_url && (
+                    <img
+                      src={getOptimizedPostImageUrl(message.shared_post.image_url, { width: 640 })}
+                      alt=""
+                      className="mt-2 max-h-48 w-full rounded-lg object-cover"
+                      loading="lazy"
+                    />
+                  )}
                   <span className="mt-2 block text-xs underline">فتح المنشور</span>
                 </button>}
                 <time className={'mt-1 block text-left text-[10px] ' + (mine ? 'text-white/70' : 'text-ink-faint')}>

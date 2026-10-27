@@ -4,6 +4,7 @@ import { ArrowLeft, Ban, Loader2, Search, Shield, Trash2, Users, FileText, Rotat
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
+import { getOptimizedPostImageUrl, deletePostImageFromCloudinary, isCloudinaryUrl } from '@/lib/cloudinary';
 
 type AdminUser = {
   user_id: string;
@@ -147,8 +148,28 @@ export function AdminScreen() {
     setError(null);
     const { error: deleteError } = await supabase.rpc('admin_delete_post', { p_post_id: post.id });
     setBusyId(null);
-    if (deleteError) setError('تعذّر حذف المنشور: ' + deleteError.message);
-    else setPosts((prev) => prev.filter((item) => item.id !== post.id));
+    if (deleteError) {
+      setError('تعذّر حذف المنشور: ' + deleteError.message);
+    } else {
+      if (post.image_url) {
+        if (isCloudinaryUrl(post.image_url)) {
+          if (session?.access_token) {
+            void deletePostImageFromCloudinary(post.image_url, session.access_token, post.id);
+          }
+        } else if (post.image_url.includes('/media/')) {
+          try {
+            const match = post.image_url.match(/\/media\/(.+)$/);
+            if (match) {
+              const storagePath = decodeURIComponent(match[1]);
+              void supabase.storage.from('media').remove([storagePath]);
+            }
+          } catch (imgErr) {
+            console.warn('delete image from storage failed:', imgErr);
+          }
+        }
+      }
+      setPosts((prev) => prev.filter((item) => item.id !== post.id));
+    }
   }
 
   async function approvePost(postId: string) {
@@ -170,23 +191,29 @@ export function AdminScreen() {
     setError(null);
 
     const pending = pendingPosts.find((p) => p.id === postId);
-    if (pending?.image_url) {
-      try {
-        const match = pending.image_url.match(/\/media\/(.+)$/);
-        if (match) {
-          const storagePath = decodeURIComponent(match[1]);
-          void supabase.storage.from('media').remove([storagePath]);
-        }
-      } catch (imgErr) {
-        console.warn('delete image from storage failed:', imgErr);
-      }
-    }
 
     const { error: rejErr } = await supabase.rpc('admin_reject_post', { p_post_id: postId });
     setBusyId(null);
     if (rejErr) {
       setError('تعذر رفض المنشور: ' + rejErr.message);
     } else {
+      if (pending?.image_url) {
+        if (isCloudinaryUrl(pending.image_url)) {
+          if (session?.access_token) {
+            void deletePostImageFromCloudinary(pending.image_url, session.access_token, postId);
+          }
+        } else if (pending.image_url.includes('/media/')) {
+          try {
+            const match = pending.image_url.match(/\/media\/(.+)$/);
+            if (match) {
+              const storagePath = decodeURIComponent(match[1]);
+              void supabase.storage.from('media').remove([storagePath]);
+            }
+          } catch (imgErr) {
+            console.warn('delete image from storage failed:', imgErr);
+          }
+        }
+      }
       setPendingPosts((prev) => prev.filter((p) => p.id !== postId));
       void load();
     }
@@ -390,7 +417,12 @@ export function AdminScreen() {
 
                 {post.image_url && (
                   <div className="overflow-hidden rounded-xl border border-surface-dim bg-surface-subtle">
-                    <img src={post.image_url} alt="مرفق المنشور" className="max-h-80 w-full object-cover" />
+                    <img
+                      src={getOptimizedPostImageUrl(post.image_url, { width: 800 })}
+                      alt="مرفق المنشور"
+                      className="max-h-80 w-full object-cover"
+                      loading="lazy"
+                    />
                   </div>
                 )}
 
@@ -514,7 +546,14 @@ export function AdminScreen() {
                 </button>
               </div>
               {post.body && <p className="whitespace-pre-wrap break-words text-sm text-ink-soft font-noto">{post.body}</p>}
-              {post.image_url && <img src={post.image_url} alt="" className="max-h-64 w-full rounded-xl object-cover" loading="lazy" />}
+              {post.image_url && (
+                <img
+                  src={getOptimizedPostImageUrl(post.image_url, { width: 640 })}
+                  alt=""
+                  className="max-h-64 w-full rounded-xl object-cover"
+                  loading="lazy"
+                />
+              )}
             </article>;
           })}
           {!filteredPosts.length && <p className="card text-center text-sm text-ink-muted">لا توجد منشورات مطابقة.</p>}

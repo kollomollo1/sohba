@@ -18,6 +18,7 @@ export type FeedPost = {
   author_id: string;
   body: string;
   image_url: string | null;
+  image_public_id?: string | null;
   is_urgent: boolean;
   created_at: string;
   author_name: string;
