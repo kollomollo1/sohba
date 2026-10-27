@@ -4,5 +4,11 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cloudinary-cleanup-expired",
+      "schedule": "0 2 * * *"
+    }
   ]
 }

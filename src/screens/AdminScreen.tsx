@@ -53,6 +53,31 @@ export function AdminScreen() {
   const [demoFeedback, setDemoFeedback] = useState<string | null>(null);
   const [autoPostingEnabled, setAutoPostingEnabled] = useState(true);
   const [togglingAutoPost, setTogglingAutoPost] = useState(false);
+  const [cleaningMedia, setCleaningMedia] = useState(false);
+  const [mediaCleanupFeedback, setMediaCleanupFeedback] = useState<string | null>(null);
+
+  async function cleanExpiredCloudinaryMedia() {
+    if (!session?.access_token) return;
+    setCleaningMedia(true);
+    setMediaCleanupFeedback(null);
+    setError(null);
+    try {
+      const res = await fetch('/api/cloudinary-cleanup-expired', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'تعذّر تنظيف وسائط كلاوديناري');
+      setMediaCleanupFeedback(data.message || 'تم تنظيف وسائط كلاوديناري بنجاح.');
+    } catch (err: any) {
+      setError(err.message || 'فشل تنظيف وسائط كلاوديناري.');
+    } finally {
+      setCleaningMedia(false);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!isAdmin) { setLoading(false); return; }
@@ -466,6 +491,34 @@ export function AdminScreen() {
         </section>
       ) : tab === 'demo' ? (
         <section className="space-y-3">
+          {/* Cloudinary Expired Media Auto-Cleaner */}
+          <div className="card space-y-3 border-primary/20 bg-primary-50/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+                  <RotateCcw className="h-4 w-4 text-primary" />
+                  صيانة وسائط كلاوديناري المنتهية (24 ساعة)
+                </h3>
+                <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                  يقوم Vercel Cron بحذف الصور الأقدم من 24 ساعة تلقائياً يومياً. يمكنك أيضاً الضغط هنا لتفريغ وحذف جميع صور المنشورات المنتهية فوراً وتوفير رصيدك.
+                </p>
+              </div>
+              <button
+                disabled={cleaningMedia || busyId !== null}
+                onClick={() => void cleanExpiredCloudinaryMedia()}
+                className="btn-primary py-2 px-4 text-xs font-bold shrink-0 self-start sm:self-auto"
+              >
+                {cleaningMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                تنظيف الصور المنتهية الآن
+              </button>
+            </div>
+            {mediaCleanupFeedback && (
+              <p className="rounded-xl bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                {mediaCleanupFeedback}
+              </p>
+            )}
+          </div>
+
           <div className="card space-y-3">
             <p className="text-sm leading-relaxed text-ink-soft">شخصيات خيالية للعبة بأسماء مصرية متنوعة، وموسومة «شخصية لعبة» في المنشورات والملفات الشخصية. ينشر كل حساب منشورًا يوميًا تلقائيًا.</p>
 
