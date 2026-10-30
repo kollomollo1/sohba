@@ -14,6 +14,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
   const [isDragging, setIsDragging] = useState(false);
   const [dismissY, setDismissY] = useState(0);
   const [isDismissing, setIsDismissing] = useState(false);
+  const isClosedByHistoryRef = useRef(false);
 
   const dragStartRef = useRef({ x: 0, y: 0 });
   const lastTouchDistanceRef = useRef<number | null>(null);
@@ -34,7 +35,28 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     };
   }, []);
 
-  // Close on Escape key
+  // Handle Mobile Hardware/Gesture Back Button & History
+  // Prevents mobile back button from navigating away or reloading the page!
+  useEffect(() => {
+    const stateKey = 'image-viewer-' + Date.now();
+    window.history.pushState({ modal: 'image-viewer', key: stateKey }, '');
+
+    const handlePopState = () => {
+      isClosedByHistoryRef.current = true;
+      onClose();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (!isClosedByHistoryRef.current && window.history.state?.modal === 'image-viewer') {
+        window.history.back();
+      }
+    };
+  }, [onClose]);
+
+  // Close on Escape key (Desktop fallback)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();

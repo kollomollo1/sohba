@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { X, Flame, Loader2, Image as ImageIcon, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Flame, Loader2, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
@@ -289,18 +289,6 @@ export function CreatePostScreen() {
               >
                 <X className="h-4 w-4" />
               </button>
-              {imageFile && (
-                <div className="flex items-center justify-between bg-surface-raised px-3.5 py-2 text-xs border-t border-surface-dim">
-                  <span className="inline-flex items-center gap-1.5 font-bold text-emerald-600">
-                    <CheckCircle className="h-4 w-4" />
-                    {originalImageSize
-                      ? `تم الضغط إلى نصف الحجم الأصلي (${Math.round(imageFile.size / 1024)} ك.ب بدلاً من ${Math.round(originalImageSize / 1024)} ك.ب)`
-                      : `تم الضغط بحجم خفيف (${Math.round(imageFile.size / 1024)} ك.ب)`}
-                  </span>
-                  <span className="text-[11px] text-ink-muted">سريعة جداً في التحميل</span>
-                </div>
-              )}
-              {/* تم إيقاف مراجعة الإدارة مؤقتاً: تنشر الصور مباشرة */}
             </div>
           ) : (
             <label
