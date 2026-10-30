@@ -33,6 +33,16 @@ function Shell() {
   const [unreadAdminAlerts, setUnreadAdminAlerts] = useState(0);
   const location = useLocation();
 
+  // Track page views in Google Analytics across routes
+  useEffect(() => {
+    if (typeof (window as any).gtag === 'function') {
+      (window as any).gtag('config', 'G-L60BY7T1R1', {
+        page_path: location.pathname + location.search + location.hash,
+        page_location: window.location.href,
+      });
+    }
+  }, [location]);
+
   // Hide bottom nav on full-screen routes
   const hideNav =
     location.pathname === '/create' ||
