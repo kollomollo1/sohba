@@ -12,13 +12,13 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dismissY, setDismissY] = useState(0); // Swipe-down-to-dismiss tracking
+  const [dismissY, setDismissY] = useState(0);
   const [isDismissing, setIsDismissing] = useState(false);
 
   const dragStartRef = useRef({ x: 0, y: 0 });
-  const touchStartPointRef = useRef({ x: 0, y: 0 });
   const lastTouchDistanceRef = useRef<number | null>(null);
-  const lastTapTimeRef = useRef<number>(0);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   // Lock body scroll while modal is active
   useEffect(() => {
@@ -56,34 +56,38 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     setDismissY(0);
   };
 
+  const toggleZoom = () => {
+    if (scale > 1) {
+      resetZoom();
+    } else {
+      setScale(2.5);
+      setPosition({ x: 0, y: 0 });
+      setDismissY(0);
+    }
+  };
+
   // Mobile touch handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       // 2 fingers: pinch-to-zoom
+      setIsDismissing(false);
+      setIsDragging(false);
+      setDismissY(0);
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
       lastTouchDistanceRef.current = dist;
-      setIsDragging(false);
-    } else if (e.touches.length === 1) {
+      return;
+    }
+
+    if (e.touches.length === 1) {
       const touch = e.touches[0];
-      const now = Date.now();
-
-      // Double tap detector (mobile standard: < 300ms)
-      if (now - lastTapTimeRef.current < 300) {
-        if (scale > 1) {
-          resetZoom();
-        } else {
-          setScale(2.5);
-          setPosition({ x: 0, y: 0 });
-        }
-        lastTapTimeRef.current = 0;
-        return;
-      }
-      lastTapTimeRef.current = now;
-
-      touchStartPointRef.current = { x: touch.clientX, y: touch.clientY };
+      touchStartPosRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+      };
 
       if (scale > 1) {
         setIsDragging(true);
@@ -92,9 +96,11 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
           y: touch.clientY - position.y,
         };
       } else {
-        // scale === 1: start tracking potential swipe-down to dismiss
         setIsDismissing(true);
-        dragStartRef.current = { x: touch.clientX, y: touch.clientY };
+        dragStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+        };
       }
     }
   };
@@ -116,16 +122,16 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     } else if (e.touches.length === 1) {
       const touch = e.touches[0];
       if (scale > 1 && isDragging) {
-        // Pan image around
+        // Pan zoomed image
         setPosition({
           x: touch.clientX - dragStartRef.current.x,
           y: touch.clientY - dragStartRef.current.y,
         });
       } else if (scale === 1 && isDismissing) {
-        // Swipe down to dismiss
+        // Swipe down to dismiss with 10px deadzone
         const dy = touch.clientY - dragStartRef.current.y;
-        if (dy > 0) {
-          setDismissY(dy);
+        if (dy > 10) {
+          setDismissY(dy - 10);
         } else {
           setDismissY(0);
         }
@@ -133,14 +139,41 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent) => {
     lastTouchDistanceRef.current = null;
     setIsDragging(false);
 
+    // Verify if this was a clean mobile tap
+    if (touchStartPosRef.current && e.changedTouches.length === 1) {
+      const touch = e.changedTouches[0];
+      const moveDistance = Math.hypot(
+        touch.clientX - touchStartPosRef.current.x,
+        touch.clientY - touchStartPosRef.current.y
+      );
+      const duration = Date.now() - touchStartPosRef.current.time;
+
+      // Clean tap threshold: moved < 15px and lasted < 350ms
+      if (moveDistance < 15 && duration < 350) {
+        const now = Date.now();
+        if (
+          lastTapRef.current &&
+          now - lastTapRef.current.time < 500 &&
+          Math.hypot(touch.clientX - lastTapRef.current.x, touch.clientY - lastTapRef.current.y) < 45
+        ) {
+          // Double Tap Triggered!
+          lastTapRef.current = null;
+          toggleZoom();
+          return;
+        } else {
+          lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+        }
+      }
+    }
+
     if (scale === 1 && isDismissing) {
       setIsDismissing(false);
-      // If swiped down more than 100px, dismiss
-      if (dismissY > 100) {
+      // Dismiss if swiped down > 120px
+      if (dismissY > 120) {
         onClose();
       } else {
         setDismissY(0);
@@ -148,14 +181,10 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     }
   };
 
-  // Double click for desktop fallback
+  // Double click / desktop fallback
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (scale > 1) {
-      resetZoom();
-    } else {
-      setScale(2.5);
-    }
+    toggleZoom();
   };
 
   // Wheel zoom fallback
@@ -185,12 +214,12 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
         if (scale === 1 && dismissY === 0) onClose();
       }}
     >
-      {/* Mobile Top Header */}
+      {/* Top Mobile Bar */}
       <div
         className="absolute top-0 inset-x-0 z-[110] flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 pointer-events-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close button (Thumb-friendly touch target) */}
+        {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
@@ -202,7 +231,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
         </button>
 
         {/* Mobile Zoom Controls Pill */}
-        <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 backdrop-blur-md shadow-md border border-white/10 text-white">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1.5 backdrop-blur-md shadow-md border border-white/10 text-white">
           <button
             type="button"
             onClick={zoomOut}
@@ -213,9 +242,14 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
             <ZoomOut className="h-4 w-4" />
           </button>
 
-          <span className="min-w-[40px] text-center text-xs font-bold text-white/95">
-            {Math.round(scale * 100)}%
-          </span>
+          <button
+            type="button"
+            onClick={toggleZoom}
+            className="px-2 py-0.5 text-xs font-bold text-white/95 rounded-md active:bg-white/20 transition"
+            title="انقر للتبديل"
+          >
+            {scale > 1 ? `${Math.round(scale * 100)}%` : 'تكبير 2.5x'}
+          </button>
 
           <button
             type="button"
@@ -241,7 +275,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
         </div>
       </div>
 
-      {/* Main Image Container (Mobile Touch Optimized) */}
+      {/* Main Image Container */}
       <div
         className="relative flex items-center justify-center max-h-full max-w-full overflow-hidden w-full h-full px-2"
         onTouchStart={handleTouchStart}
@@ -257,7 +291,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
           draggable={false}
           style={{
             transform: `translate3d(${position.x}px, ${position.y + dismissY}px, 0) scale(${scale})`,
-            transition: isDragging || isDismissing ? 'none' : 'transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            transition: isDragging || isDismissing ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
           }}
           className="max-h-[85vh] max-w-[96vw] object-contain rounded-xl select-none pointer-events-auto"
         />
@@ -268,10 +302,10 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         className="absolute bottom-2 inset-x-0 text-center pointer-events-none transition-opacity duration-200"
       >
-        <span className="inline-block rounded-full bg-black/60 px-3.5 py-1 text-[11px] font-medium text-white/80 backdrop-blur-sm shadow-sm">
+        <span className="inline-block rounded-full bg-black/65 px-4 py-1.5 text-xs font-medium text-white/90 backdrop-blur-md shadow-md border border-white/10">
           {scale > 1
-            ? 'اسحب بإصبعك للتجول · انقر مرتين للرجوع'
-            : 'بإصبعين للزووم · انقر مرتين للتكبير · اسحب للأسفل للإغلاق'}
+            ? 'انقر مرتين للرجوع · اسحب للتجول'
+            : 'انقر مرتين للتكبير · بإصبعين للزووم'}
         </span>
       </div>
     </div>
