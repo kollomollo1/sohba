@@ -17,8 +17,13 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
 
   const dragStartRef = useRef({ x: 0, y: 0 });
   const lastTouchDistanceRef = useRef<number | null>(null);
-  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
-  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  // Tap tracking
+  const lastTapTimeRef = useRef<number>(0);
+  const lastTapPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const touchStartTimeRef = useRef<number>(0);
+  const touchStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lastZoomToggleTimeRef = useRef<number>(0);
 
   // Lock body scroll while modal is active
   useEffect(() => {
@@ -38,6 +43,38 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // Core Zoom Toggle with 400ms cooldown to prevent touch + synthetic click duplication
+  const handleZoomToggle = (originX?: number, originY?: number) => {
+    const now = Date.now();
+    if (now - lastZoomToggleTimeRef.current < 400) return;
+    lastZoomToggleTimeRef.current = now;
+
+    setIsDragging(false);
+    setIsDismissing(false);
+    setDismissY(0);
+
+    setScale((prev) => {
+      if (prev > 1) {
+        setPosition({ x: 0, y: 0 });
+        return 1;
+      } else {
+        if (originX !== undefined && originY !== undefined && typeof window !== 'undefined') {
+          const cx = window.innerWidth / 2;
+          const cy = window.innerHeight / 2;
+          const dx = (cx - originX) * 1.1;
+          const dy = (cy - originY) * 1.1;
+          setPosition({
+            x: Math.max(-180, Math.min(180, dx)),
+            y: Math.max(-180, Math.min(180, dy)),
+          });
+        } else {
+          setPosition({ x: 0, y: 0 });
+        }
+        return 2.5;
+      }
+    });
+  };
+
   const zoomIn = () => {
     setScale((prev) => Math.min(4, +(prev + 0.5).toFixed(2)));
   };
@@ -54,16 +91,6 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     setScale(1);
     setPosition({ x: 0, y: 0 });
     setDismissY(0);
-  };
-
-  const toggleZoom = () => {
-    if (scale > 1) {
-      resetZoom();
-    } else {
-      setScale(2.5);
-      setPosition({ x: 0, y: 0 });
-      setDismissY(0);
-    }
   };
 
   // Mobile touch handlers
@@ -83,10 +110,10 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
 
     if (e.touches.length === 1) {
       const touch = e.touches[0];
+      touchStartTimeRef.current = Date.now();
       touchStartPosRef.current = {
         x: touch.clientX,
         y: touch.clientY,
-        time: Date.now(),
       };
 
       if (scale > 1) {
@@ -144,36 +171,38 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     setIsDragging(false);
 
     // Verify if this was a clean mobile tap
-    if (touchStartPosRef.current && e.changedTouches.length === 1) {
+    if (e.changedTouches.length === 1) {
       const touch = e.changedTouches[0];
       const moveDistance = Math.hypot(
         touch.clientX - touchStartPosRef.current.x,
         touch.clientY - touchStartPosRef.current.y
       );
-      const duration = Date.now() - touchStartPosRef.current.time;
+      const duration = Date.now() - touchStartTimeRef.current;
 
-      // Clean tap threshold: moved < 15px and lasted < 350ms
-      if (moveDistance < 15 && duration < 350) {
+      // Clean tap: finger moved < 16px and tap duration < 320ms
+      if (moveDistance < 16 && duration < 320) {
         const now = Date.now();
-        if (
-          lastTapRef.current &&
-          now - lastTapRef.current.time < 500 &&
-          Math.hypot(touch.clientX - lastTapRef.current.x, touch.clientY - lastTapRef.current.y) < 45
-        ) {
-          // Double Tap Triggered!
-          lastTapRef.current = null;
-          toggleZoom();
+        const timeDiff = now - lastTapTimeRef.current;
+        const distDiff = Math.hypot(
+          touch.clientX - lastTapPosRef.current.x,
+          touch.clientY - lastTapPosRef.current.y
+        );
+
+        // Double tap: second tap within 450ms and within 45px radius
+        if (timeDiff > 40 && timeDiff < 450 && distDiff < 45) {
+          lastTapTimeRef.current = 0;
+          handleZoomToggle(touch.clientX, touch.clientY);
           return;
         } else {
-          lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+          lastTapTimeRef.current = now;
+          lastTapPosRef.current = { x: touch.clientX, y: touch.clientY };
         }
       }
     }
 
     if (scale === 1 && isDismissing) {
       setIsDismissing(false);
-      // Dismiss if swiped down > 120px
-      if (dismissY > 120) {
+      if (dismissY > 110) {
         onClose();
       } else {
         setDismissY(0);
@@ -181,13 +210,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     }
   };
 
-  // Double click / desktop fallback
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    toggleZoom();
-  };
-
-  // Wheel zoom fallback
+  // Wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
     e.stopPropagation();
     const delta = e.deltaY < 0 ? 0.3 : -0.3;
@@ -198,7 +221,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     });
   };
 
-  const backdropOpacity = scale === 1 && dismissY > 0 ? Math.max(0.3, 1 - dismissY / 350) : 1;
+  const backdropOpacity = scale === 1 && dismissY > 0 ? Math.max(0.3, 1 - dismissY / 320) : 1;
 
   return (
     <div
@@ -206,12 +229,15 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
       aria-modal="true"
       style={{
         backgroundColor: `rgba(0, 0, 0, ${0.96 * backdropOpacity})`,
-        paddingTop: 'max(1rem, env(safe-area-inset-top))',
-        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
       }}
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center backdrop-blur-md select-none touch-none animate-fade-in"
-      onClick={() => {
-        if (scale === 1 && dismissY === 0) onClose();
+      onClick={(e) => {
+        // Only close if clicking directly on the backdrop background
+        if (e.target === e.currentTarget && scale === 1 && dismissY === 0) {
+          onClose();
+        }
       }}
     >
       {/* Top Mobile Bar */}
@@ -244,7 +270,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
 
           <button
             type="button"
-            onClick={toggleZoom}
+            onClick={() => handleZoomToggle()}
             className="px-2 py-0.5 text-xs font-bold text-white/95 rounded-md active:bg-white/20 transition"
             title="انقر للتبديل"
           >
@@ -277,11 +303,14 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
 
       {/* Main Image Container */}
       <div
-        className="relative flex items-center justify-center max-h-full max-w-full overflow-hidden w-full h-full px-2"
+        className="relative flex items-center justify-center max-h-full max-w-full overflow-hidden w-full h-full p-2 touch-none"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onDoubleClick={handleDoubleClick}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          handleZoomToggle(e.clientX, e.clientY);
+        }}
         onWheel={handleWheel}
         onClick={(e) => e.stopPropagation()}
       >
@@ -292,8 +321,9 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
           style={{
             transform: `translate3d(${position.x}px, ${position.y + dismissY}px, 0) scale(${scale})`,
             transition: isDragging || isDismissing ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            willChange: 'transform',
           }}
-          className="max-h-[85vh] max-w-[96vw] object-contain rounded-xl select-none pointer-events-auto"
+          className="max-h-[85vh] max-w-[96vw] object-contain rounded-xl select-none touch-none pointer-events-auto shadow-2xl"
         />
       </div>
 
