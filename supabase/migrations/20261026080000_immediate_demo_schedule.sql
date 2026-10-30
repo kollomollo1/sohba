@@ -204,11 +204,13 @@ begin
 
   get diagnostics v_count = row_count;
 
-  -- 2. Clear all queued demo posts
-  delete from public.demo_daily_posts;
+  -- 2. Clear all queued demo posts (with WHERE clause for safeupdate)
+  delete from public.demo_daily_posts
+  where run_date is not null;
 
-  -- 3. Clear runs counter so re-scheduling is completely fresh
-  delete from public.demo_daily_runs;
+  -- 3. Clear runs counter so re-scheduling is completely fresh (with WHERE clause for safeupdate)
+  delete from public.demo_daily_runs
+  where run_date is not null;
 
   return v_count;
 end;

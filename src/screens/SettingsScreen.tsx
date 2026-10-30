@@ -425,8 +425,8 @@ export function SettingsScreen() {
           <div className="card flex items-center gap-3">
             <Info className="h-5 w-5 text-ink-muted" />
             <div className="flex-1">
-              <p className="text-sm font-semibold text-ink">صُحبة — الإصدار 1.0</p>
-              <p className="text-xs text-ink-muted">شبكة اجتماعية عربية مخصصة للأصدقاء والتواصل الحقيقي.</p>
+              <p className="text-sm font-semibold text-ink">صُحبة Games Mix — الإصدار 1.0</p>
+              <p className="text-xs text-ink-muted">شبكة اجتماعية عربية مخصصة للأصدقاء ومجتمع Games Mix.</p>
             </div>
           </div>
         </section>
