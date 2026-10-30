@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { showUndo } from '@/components/UndoToast';
 import { getOptimizedPostImageUrl, deletePostImageFromCloudinary, isCloudinaryUrl } from '@/lib/cloudinary';
+import { ImageZoomModal } from '@/components/ImageZoomModal';
 
 type Props = {
   post: FeedPost;
@@ -849,34 +850,13 @@ export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppresse
           </section>
         </div>
       )}
-      {/* Full-Screen Image Lightbox Modal */}
+      {/* Full-Screen Interactive Image Zoom Modal */}
       {lightboxOpen && post.image_url && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-2 sm:p-4 animate-fade-in"
-          onClick={() => setLightboxOpen(false)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxOpen(false)}
-            className="absolute top-4 left-4 z-[110] flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition shadow-lg backdrop-blur-sm"
-            aria-label="إغلاق"
-            title="إغلاق (Esc)"
-          >
-            <X className="h-6 w-6" />
-          </button>
-          <div
-            className="relative max-h-full max-w-full flex items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={getOptimizedPostImageUrl(post.image_url, { width: 1800 })}
-              alt="صورة المنشور بالحجم الكامل"
-              className="max-h-[92vh] max-w-[96vw] object-contain rounded-xl shadow-2xl select-none"
-            />
-          </div>
-        </div>
+        <ImageZoomModal
+          imageUrl={post.image_url}
+          alt={post.body ? post.body.slice(0, 50) : 'صورة المنشور'}
+          onClose={() => setLightboxOpen(false)}
+        />
       )}
     </article>
   );
