@@ -546,15 +546,7 @@ export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppresse
         post.is_urgent ? 'shadow-urgent animate-urgent-pulse border-urgent/40' : ''
       }`}
     >
-      {post.status === 'pending_approval' && (
-        <div className="flex items-center gap-2 bg-amber-500/10 px-4 py-2 text-amber-700 dark:text-amber-400">
-          <Clock className="h-4 w-4" strokeWidth={2.4} />
-          <span className="text-xs font-bold">بانتظار موافقة الإدارة</span>
-          <span className="mr-auto text-[11px] font-medium text-amber-700/70 dark:text-amber-400/70">
-            يظهر لك فقط حتى تتم مراجعته
-          </span>
-        </div>
-      )}
+      {/* تم إيقاف شريط انتظار موافقة الإدارة مؤقتاً */}
 
       {post.is_urgent && (
         <div className="flex items-center gap-2 bg-urgent/10 px-4 py-2 text-urgent">
