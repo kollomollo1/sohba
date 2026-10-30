@@ -270,8 +270,201 @@ revoke execute on function public.demo_post_text(integer, text) from public, ano
 grant execute on function public.demo_post_text(integer, text) to service_role;
 
 -- ============================================================================
--- 2. Enhanced publish_daily_demo_posts() with 1-MINUTE INTERVAL
---    Coprime math ensures 0 duplicates among all 100 accounts!
+-- 2. Upgrade demo_daily_posts schema to support Infinite Continuous Batches
+-- ============================================================================
+
+alter table public.demo_daily_posts add column if not exists id uuid default gen_random_uuid();
+update public.demo_daily_posts set id = gen_random_uuid() where id is null;
+alter table public.demo_daily_posts alter column id set not null;
+alter table public.demo_daily_posts drop constraint if exists demo_daily_posts_pkey;
+alter table public.demo_daily_posts drop constraint if exists demo_daily_posts_post_id_key;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.demo_daily_posts'::regclass and contype = 'p'
+  ) then
+    alter table public.demo_daily_posts add primary key (id);
+  end if;
+end;
+$$;
+create index if not exists idx_demo_daily_posts_queue on public.demo_daily_posts (post_id, scheduled_at asc);
+
+-- ============================================================================
+-- 3. schedule_next_demo_batch(): Refills the queue with next 100 gaming posts
+--    Endless cycle: shifts post selection each round so accounts never repeat!
+-- ============================================================================
+
+create or replace function public.schedule_next_demo_batch()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_run_date date := current_date;
+  v_last_scheduled timestamptz;
+  v_start timestamptz;
+  v_account record;
+  v_scheduled_count integer := 0;
+  v_total_published integer := 0;
+  v_batch_num integer := 0;
+  v_post_index integer;
+  v_body text;
+  v_gender text;
+  v_scheduled_at timestamptz;
+  v_gap interval := interval '1 minute';
+begin
+  -- 1. Respect master pause toggle
+  if exists (select 1 from public.demo_post_settings where id = 1 and not auto_posting_enabled) then
+    return 0;
+  end if;
+
+  -- 2. Advisory lock prevents concurrent scheduling races
+  if not pg_try_advisory_xact_lock(hashtextextended('schedule_next_demo_batch', 8821)) then
+    return 0;
+  end if;
+
+  -- 3. Determine start time: right after the last queued post, or NOW if empty/overdue
+  select max(scheduled_at) into v_last_scheduled
+  from public.demo_daily_posts
+  where post_id is null;
+
+  if v_last_scheduled is null or v_last_scheduled < now() then
+    v_start := now();
+  else
+    v_start := v_last_scheduled + v_gap;
+  end if;
+
+  -- 4. Calculate total posts published so far to rotate offsets endlessly
+  select coalesce(sum(posts_created), 0)::integer into v_total_published
+  from public.demo_daily_runs;
+
+  v_batch_num := v_total_published / 100;
+
+  -- 5. Schedule each demo account with a distinct post from the 200 pool
+  for v_account in
+    select
+      p.id,
+      coalesce(p.demo_gender, 'male') as demo_gender,
+      row_number() over (order by p.created_at, p.id)::integer - 1 as account_index
+    from public.profiles p
+    left join public.account_moderation m on m.user_id = p.id
+    where p.is_demo_account
+      and not coalesce(m.permanently_banned, false)
+      and not coalesce(m.profile_permanently_banned, false)
+      and (m.access_suspended_until is null or m.access_suspended_until <= now())
+      and (m.posting_suspended_until is null or m.posting_suspended_until <= now())
+    order by p.created_at, p.id
+  loop
+    v_gender := v_account.demo_gender;
+
+    -- Smooth endless rotation across the 200 posts bank:
+    -- Each batch shifts by 37 (coprime to 200), ensuring accounts get different content every cycle
+    v_post_index := ((v_total_published + v_account.account_index + (v_batch_num * 37)) % 200) + 1;
+    v_body := public.demo_post_text(v_post_index, v_gender);
+
+    v_scheduled_at := v_start + (v_scheduled_count * v_gap);
+
+    insert into public.demo_daily_posts (run_date, user_id, post_id, body, scheduled_at)
+    values (v_run_date, v_account.id, null, v_body, v_scheduled_at);
+
+    v_scheduled_count := v_scheduled_count + 1;
+  end loop;
+
+  return v_scheduled_count;
+end;
+$$;
+
+grant execute on function public.schedule_next_demo_batch() to anon, authenticated, service_role;
+
+-- ============================================================================
+-- 4. publish_due_demo_post(): Infinite Loop & Instant Execution
+--    - When queue is low (< 3 unposted posts), automatically refills next 100!
+--    - Posts every 1 minute continuously without stopping.
+-- ============================================================================
+
+create or replace function public.publish_due_demo_post()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_item public.demo_daily_posts%rowtype;
+  v_post_id uuid;
+  v_unposted_count integer;
+begin
+  -- 1. Check auto-posting toggle
+  if exists (select 1 from public.demo_post_settings where id = 1 and not auto_posting_enabled) then
+    return 0;
+  end if;
+
+  -- 2. Check remaining unposted queue size. If < 3 (or 0), automatically refill next 100 batch!
+  select count(*) into v_unposted_count
+  from public.demo_daily_posts
+  where post_id is null;
+
+  if v_unposted_count < 3 then
+    perform public.schedule_next_demo_batch();
+  end if;
+
+  -- 3. If backlog exists (> 5 minutes overdue due to no active viewers), realign queue smoothly from NOW
+  if exists (
+    select 1 from public.demo_daily_posts
+    where post_id is null and scheduled_at < now() - interval '5 minutes'
+  ) then
+    with reordered as (
+      select id, row_number() over (order by scheduled_at asc) - 1 as seq
+      from public.demo_daily_posts
+      where post_id is null
+    )
+    update public.demo_daily_posts dp
+    set scheduled_at = now() + (r.seq * interval '1 minute')
+    from reordered r
+    where dp.id = r.id;
+  end if;
+
+  -- 4. Select the earliest scheduled post that is due
+  select * into v_item
+  from public.demo_daily_posts
+  where post_id is null and scheduled_at <= now()
+  order by scheduled_at asc
+  for update skip locked
+  limit 1;
+
+  if not found then
+    return 0;
+  end if;
+
+  -- 5. Publish to public.posts
+  insert into public.posts (author_id, body, image_url, is_urgent)
+  values (v_item.user_id, v_item.body, null, false)
+  returning id into v_post_id;
+
+  -- 6. Mark as published
+  update public.demo_daily_posts
+  set post_id = v_post_id, published_at = now()
+  where id = v_item.id;
+
+  -- 7. Update daily runs counter
+  insert into public.demo_daily_runs (run_date, posts_created)
+  values (current_date, 1)
+  on conflict (run_date) do update
+    set posts_created = public.demo_daily_runs.posts_created + 1;
+
+  -- 8. Clean up old published queue logs (> 24h old) to keep database light
+  delete from public.demo_daily_posts
+  where post_id is not null and published_at < now() - interval '24 hours';
+
+  return 1;
+end;
+$$;
+
+grant execute on function public.publish_due_demo_post() to anon, authenticated, service_role;
+
+-- ============================================================================
+-- 5. publish_daily_demo_posts(): Manual or Admin trigger
 -- ============================================================================
 
 create or replace function public.publish_daily_demo_posts()
@@ -281,69 +474,51 @@ security definer
 set search_path = public
 as $$
 declare
-  v_run_date date := current_date;
-  v_start timestamptz := now();
-  v_account record;
-  v_scheduled_count integer := 0;
-  v_post_index integer;
-  v_body text;
-  v_gender text;
-  v_scheduled_at timestamptz;
-  v_gap interval := interval '1 minute';
+  v_scheduled integer;
 begin
   if exists (select 1 from public.demo_post_settings where id = 1 and not auto_posting_enabled) then
     return 0;
   end if;
 
-  -- Clear any previously unposted queue rows so we schedule fresh starting NOW
+  -- Clear any unposted queue rows so we start fresh right now
   delete from public.demo_daily_posts where post_id is null;
 
-  -- Schedule all active demo accounts (typically 100 accounts)
-  for v_account in
-    select
-      p.id,
-      coalesce(p.demo_gender, 'male') as demo_gender,
-      row_number() over (order by p.id)::integer - 1 as account_index
-    from public.profiles p
-    left join public.account_moderation m on m.user_id = p.id
-    where p.is_demo_account
-      and not coalesce(m.permanently_banned, false)
-      and not coalesce(m.profile_permanently_banned, false)
-      and (m.access_suspended_until is null or m.access_suspended_until <= now())
-      and (m.posting_suspended_until is null or m.posting_suspended_until <= now())
-    order by p.id
-  loop
-    v_gender := v_account.demo_gender;
+  -- Schedule the next 100 batch starting right NOW
+  v_scheduled := public.schedule_next_demo_batch();
 
-    -- Each account gets a completely unique post (100 distinct posts for 100 accounts every day)
-    -- Multiplied by 73 (coprime to 200) to shift the window dynamically each day
-    v_post_index := ((extract(doy from v_run_date)::integer * 73 + v_scheduled_count) % 200) + 1;
-    v_body := public.demo_post_text(v_post_index, v_gender);
-
-    -- Post #1 starts NOW! Next posts spaced by exactly 1 minute
-    v_scheduled_at := v_start + (v_scheduled_count * v_gap);
-
-    insert into public.demo_daily_posts (run_date, user_id, post_id, body, scheduled_at)
-    values (v_run_date, v_account.id, null, v_body, v_scheduled_at)
-    on conflict (run_date, user_id) do update set
-      post_id = null,
-      body = excluded.body,
-      scheduled_at = excluded.scheduled_at;
-
-    v_scheduled_count := v_scheduled_count + 1;
-  end loop;
-
-  -- Immediately publish the first post RIGHT NOW so feed gets a post instantly!
+  -- Immediately publish post #1 right now!
   perform public.publish_due_demo_post();
 
-  return v_scheduled_count;
+  return v_scheduled;
 end;
 $$;
 
 grant execute on function public.publish_daily_demo_posts() to anon, authenticated, service_role;
 
 -- ============================================================================
--- 3. Instantly refresh and re-schedule unposted queue rows with 1-minute intervals
+-- 6. Optional: Register pg_cron to trigger publish_due_demo_post every minute
+-- ============================================================================
+
+do $$
+begin
+  perform cron.unschedule('sohba-publish-demo-post-1min');
+exception when others then null;
+end;
+$$;
+
+do $$
+begin
+  perform cron.schedule(
+    'sohba-publish-demo-post-1min',
+    '* * * * *',
+    'select public.publish_due_demo_post();'
+  );
+exception when others then null;
+end;
+$$;
+
+-- ============================================================================
+-- 7. Instantly clear pending queue and launch the Infinite Loop starting NOW!
 -- ============================================================================
 delete from public.demo_daily_posts where post_id is null;
 select public.publish_daily_demo_posts();
