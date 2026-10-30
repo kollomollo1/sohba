@@ -386,7 +386,7 @@ export function AdminScreen() {
     } else if (action === 'publish_today') {
       void supabase.rpc('publish_due_demo_post');
       setDemoFeedback(data.scheduled > 0
-        ? `تمت جدولة ${data.scheduled} منشورًا تبدأ من الآن (نُشر المنشور الأول فوراً!) وتتوالى باقي المنشورات تلقائياً كل نصف ساعة.`
+        ? `تمت جدولة ${data.scheduled} منشورًا تبدأ من الآن (نُشر المنشور الأول فوراً!) وتتوالى باقي المنشورات تلقائياً كل دقيقة.`
         : 'لا توجد منشورات جديدة للجدولة؛ ربما جُدولت بالفعل أو الحسابات غير مؤهلة للنشر حاليًا.');
     } else if (action === 'create_100') {
       setDemoFeedback(`اكتملت العملية: أُنشئ ${data.created ?? 0} حسابًا جديدًا، وأصبح ${data.ready ?? 100} حسابًا جاهزًا. منشورات اليوم المجدولة: ${data.postsScheduledToday ?? 0}.`);
