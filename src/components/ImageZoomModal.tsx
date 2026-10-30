@@ -26,6 +26,9 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
   const touchStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const lastZoomToggleTimeRef = useRef<number>(0);
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // Lock body scroll while modal is active
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -36,34 +39,30 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
   }, []);
 
   // Handle Mobile Hardware/Gesture Back Button & History
-  // Prevents mobile back button from navigating away or reloading the page!
+  // With data-modal="true", HomeFeedScreen ignores back button, and this effect cleanly closes the image!
   useEffect(() => {
-    const stateKey = 'image-viewer-' + Date.now();
-    window.history.pushState({ modal: 'image-viewer', key: stateKey }, '');
+    window.history.pushState({ modalOpen: true }, '', window.location.href);
 
-    const handlePopState = () => {
-      isClosedByHistoryRef.current = true;
-      onClose();
+    let isPopped = false;
+    const onPopState = () => {
+      isPopped = true;
+      onCloseRef.current();
     };
 
-    window.addEventListener('popstate', handlePopState);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseRef.current();
+    };
 
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.removeEventListener('popstate', handlePopState);
-      if (!isClosedByHistoryRef.current && window.history.state?.modal === 'image-viewer') {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('keydown', onKeyDown);
+      if (!isPopped && window.history.state?.modalOpen) {
         window.history.back();
       }
     };
-  }, [onClose]);
-
-  // Close on Escape key (Desktop fallback)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   // Core Zoom Toggle with 400ms cooldown to prevent touch + synthetic click duplication
   const handleZoomToggle = (originX?: number, originY?: number) => {
@@ -249,6 +248,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
     <div
       role="dialog"
       aria-modal="true"
+      data-modal="true"
       style={{
         backgroundColor: `rgba(0, 0, 0, ${0.96 * backdropOpacity})`,
         paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
