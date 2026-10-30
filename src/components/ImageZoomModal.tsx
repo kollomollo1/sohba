@@ -12,7 +12,11 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [dismissY, setDismissY] = useState(0); // Swipe-down-to-dismiss tracking
+  const [isDismissing, setIsDismissing] = useState(false);
+
   const dragStartRef = useRef({ x: 0, y: 0 });
+  const touchStartPointRef = useRef({ x: 0, y: 0 });
   const lastTouchDistanceRef = useRef<number | null>(null);
   const lastTapTimeRef = useRef<number>(0);
 
@@ -35,10 +39,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
   }, [onClose]);
 
   const zoomIn = () => {
-    setScale((prev) => {
-      const next = Math.min(4, +(prev + 0.5).toFixed(2));
-      return next;
-    });
+    setScale((prev) => Math.min(4, +(prev + 0.5).toFixed(2)));
   };
 
   const zoomOut = () => {
@@ -52,87 +53,55 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
   const resetZoom = () => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
+    setDismissY(0);
   };
 
-  // Wheel zoom
-  const handleWheel = (e: React.WheelEvent) => {
-    e.stopPropagation();
-    const delta = e.deltaY < 0 ? 0.3 : -0.3;
-    setScale((prev) => {
-      const next = Math.min(Math.max(1, +(prev + delta).toFixed(2)), 4);
-      if (next === 1) setPosition({ x: 0, y: 0 });
-      return next;
-    });
-  };
-
-  // Double click / double tap toggle
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (scale > 1) {
-      resetZoom();
-    } else {
-      setScale(2.5);
-    }
-  };
-
-  // Mouse drag handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (scale <= 1) return;
-    e.preventDefault();
-    setIsDragging(true);
-    dragStartRef.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    };
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || scale <= 1) return;
-    e.preventDefault();
-    setPosition({
-      x: e.clientX - dragStartRef.current.x,
-      y: e.clientY - dragStartRef.current.y,
-    });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Touch handlers (drag + pinch-to-zoom + double tap)
+  // Mobile touch handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
+      // 2 fingers: pinch-to-zoom
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
       lastTouchDistanceRef.current = dist;
+      setIsDragging(false);
     } else if (e.touches.length === 1) {
+      const touch = e.touches[0];
       const now = Date.now();
+
+      // Double tap detector (mobile standard: < 300ms)
       if (now - lastTapTimeRef.current < 300) {
-        // Double tap
         if (scale > 1) {
           resetZoom();
         } else {
           setScale(2.5);
+          setPosition({ x: 0, y: 0 });
         }
         lastTapTimeRef.current = 0;
         return;
       }
       lastTapTimeRef.current = now;
 
+      touchStartPointRef.current = { x: touch.clientX, y: touch.clientY };
+
       if (scale > 1) {
         setIsDragging(true);
         dragStartRef.current = {
-          x: e.touches[0].clientX - position.x,
-          y: e.touches[0].clientY - position.y,
+          x: touch.clientX - position.x,
+          y: touch.clientY - position.y,
         };
+      } else {
+        // scale === 1: start tracking potential swipe-down to dismiss
+        setIsDismissing(true);
+        dragStartRef.current = { x: touch.clientX, y: touch.clientY };
       }
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (e.touches.length === 2 && lastTouchDistanceRef.current !== null) {
+      // Pinch to zoom
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
@@ -144,61 +113,107 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
         return next;
       });
       lastTouchDistanceRef.current = dist;
-    } else if (e.touches.length === 1 && isDragging && scale > 1) {
-      setPosition({
-        x: e.touches[0].clientX - dragStartRef.current.x,
-        y: e.touches[0].clientY - dragStartRef.current.y,
-      });
+    } else if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (scale > 1 && isDragging) {
+        // Pan image around
+        setPosition({
+          x: touch.clientX - dragStartRef.current.x,
+          y: touch.clientY - dragStartRef.current.y,
+        });
+      } else if (scale === 1 && isDismissing) {
+        // Swipe down to dismiss
+        const dy = touch.clientY - dragStartRef.current.y;
+        if (dy > 0) {
+          setDismissY(dy);
+        } else {
+          setDismissY(0);
+        }
+      }
     }
   };
 
   const handleTouchEnd = () => {
     lastTouchDistanceRef.current = null;
     setIsDragging(false);
+
+    if (scale === 1 && isDismissing) {
+      setIsDismissing(false);
+      // If swiped down more than 100px, dismiss
+      if (dismissY > 100) {
+        onClose();
+      } else {
+        setDismissY(0);
+      }
+    }
   };
+
+  // Double click for desktop fallback
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (scale > 1) {
+      resetZoom();
+    } else {
+      setScale(2.5);
+    }
+  };
+
+  // Wheel zoom fallback
+  const handleWheel = (e: React.WheelEvent) => {
+    e.stopPropagation();
+    const delta = e.deltaY < 0 ? 0.3 : -0.3;
+    setScale((prev) => {
+      const next = Math.min(Math.max(1, +(prev + delta).toFixed(2)), 4);
+      if (next === 1) setPosition({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  const backdropOpacity = scale === 1 && dismissY > 0 ? Math.max(0.3, 1 - dismissY / 350) : 1;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-md select-none touch-none animate-fade-in"
-      onClick={() => {
-        if (scale === 1) onClose();
+      style={{
+        backgroundColor: `rgba(0, 0, 0, ${0.96 * backdropOpacity})`,
+        paddingTop: 'max(1rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
       }}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center backdrop-blur-md select-none touch-none animate-fade-in"
+      onClick={() => {
+        if (scale === 1 && dismissY === 0) onClose();
+      }}
     >
-      {/* Top Floating Controls Bar */}
+      {/* Mobile Top Header */}
       <div
-        className="absolute top-4 inset-x-4 z-[110] flex items-center justify-between pointer-events-none"
+        className="absolute top-0 inset-x-0 z-[110] flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 pointer-events-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button */}
+        {/* Close button (Thumb-friendly touch target) */}
         <button
           type="button"
           onClick={onClose}
-          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition shadow-lg backdrop-blur-md active:scale-95"
+          className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 active:scale-90 transition shadow-md backdrop-blur-md"
           aria-label="إغلاق"
-          title="إغلاق (Esc)"
+          title="إغلاق"
         >
-          <X className="h-6 w-6" />
+          <X className="h-5 w-5" />
         </button>
 
-        {/* Zoom Controls */}
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1.5 backdrop-blur-md shadow-lg border border-white/10 text-white">
+        {/* Mobile Zoom Controls Pill */}
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 backdrop-blur-md shadow-md border border-white/10 text-white">
           <button
             type="button"
             onClick={zoomOut}
             disabled={scale <= 1}
-            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/20 transition disabled:opacity-30 disabled:hover:bg-transparent"
-            title="تصغير (-)"
+            className="flex h-8 w-8 items-center justify-center rounded-full active:bg-white/25 transition disabled:opacity-30"
             aria-label="تصغير"
           >
             <ZoomOut className="h-4 w-4" />
           </button>
 
-          <span className="min-w-[42px] text-center text-xs font-bold text-white/90">
+          <span className="min-w-[40px] text-center text-xs font-bold text-white/95">
             {Math.round(scale * 100)}%
           </span>
 
@@ -206,8 +221,7 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
             type="button"
             onClick={zoomIn}
             disabled={scale >= 4}
-            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/20 transition disabled:opacity-30 disabled:hover:bg-transparent"
-            title="تكبير (+)"
+            className="flex h-8 w-8 items-center justify-center rounded-full active:bg-white/25 transition disabled:opacity-30"
             aria-label="تكبير"
           >
             <ZoomIn className="h-4 w-4" />
@@ -217,9 +231,9 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
             <button
               type="button"
               onClick={resetZoom}
-              className="mr-1 flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/20 transition text-amber-300"
-              title="إعادة ضبط الحجم"
+              className="mr-0.5 flex h-8 w-8 items-center justify-center rounded-full active:bg-white/25 transition text-amber-300"
               aria-label="إعادة ضبط"
+              title="إعادة ضبط الحجم"
             >
               <RotateCcw className="h-4 w-4" />
             </button>
@@ -227,37 +241,37 @@ export function ImageZoomModal({ imageUrl, alt = 'صورة المنشور', onCl
         </div>
       </div>
 
-      {/* Main Image Container */}
+      {/* Main Image Container (Mobile Touch Optimized) */}
       <div
-        className={`relative flex items-center justify-center max-h-full max-w-full overflow-hidden ${
-          scale > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in'
-        }`}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onDoubleClick={handleDoubleClick}
+        className="relative flex items-center justify-center max-h-full max-w-full overflow-hidden w-full h-full px-2"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onDoubleClick={handleDoubleClick}
+        onWheel={handleWheel}
         onClick={(e) => e.stopPropagation()}
       >
         <img
-          src={getOptimizedPostImageUrl(imageUrl, { width: 2400 })}
+          src={getOptimizedPostImageUrl(imageUrl, { width: 2000 })}
           alt={alt}
           draggable={false}
           style={{
-            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,
-            transition: isDragging ? 'none' : 'transform 0.18s ease-out',
+            transform: `translate3d(${position.x}px, ${position.y + dismissY}px, 0) scale(${scale})`,
+            transition: isDragging || isDismissing ? 'none' : 'transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)',
           }}
-          className="max-h-[88vh] max-w-[94vw] object-contain rounded-xl shadow-2xl select-none pointer-events-auto"
+          className="max-h-[85vh] max-w-[96vw] object-contain rounded-xl select-none pointer-events-auto"
         />
       </div>
 
-      {/* Helper hint for mobile and desktop */}
-      <div className="absolute bottom-4 inset-x-0 text-center pointer-events-none">
-        <span className="rounded-full bg-black/60 px-3.5 py-1 text-[11px] font-medium text-white/75 backdrop-blur-sm">
+      {/* Mobile Gestures Helper Bar */}
+      <div
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        className="absolute bottom-2 inset-x-0 text-center pointer-events-none transition-opacity duration-200"
+      >
+        <span className="inline-block rounded-full bg-black/60 px-3.5 py-1 text-[11px] font-medium text-white/80 backdrop-blur-sm shadow-sm">
           {scale > 1
-            ? 'اسحب للتحريك · انقر نقرتين لإعادة الضبط'
-            : 'عجلة الماوس أو اللمس للزووم · انقر نقرتين للتكبير'}
+            ? 'اسحب بإصبعك للتجول · انقر مرتين للرجوع'
+            : 'بإصبعين للزووم · انقر مرتين للتكبير · اسحب للأسفل للإغلاق'}
         </span>
       </div>
     </div>
