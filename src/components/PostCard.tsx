@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle, Forward, Flame, MoreHorizontal, Trash2, UserPlus, BadgeCheck, Loader2, X, EyeOff, Ban, Pencil, Flag, Send, Clock, UserX, Maximize2 } from 'lucide-react';
+import { MessageCircle, Forward, Flame, MoreHorizontal, Trash2, UserPlus, BadgeCheck, Loader2, X, EyeOff, Ban, Pencil, Flag, Send, Clock, UserX } from 'lucide-react';
 import type { FeedPost, LikeReaction } from '@/types';
 import { Avatar } from '@/components/Avatar';
 import { CommentsModal } from '@/components/CommentsModal';
@@ -765,18 +765,6 @@ export function PostCard({ post, isDetail, onLikeToggled, onDeleted, onSuppresse
                 loading="lazy"
                 decoding="async"
               />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setLightboxOpen(true);
-              }}
-              className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 rounded-full bg-ink/75 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm hover:bg-ink transition shadow-sm"
-              title="عرض بالحجم الكامل"
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-              <span>عرض كامل</span>
             </button>
           </div>
         )}
