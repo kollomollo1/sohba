@@ -193,11 +193,7 @@ export function CreatePostScreen() {
       return;
     }
 
-    if (uploadedImageUrl) {
-      navigate('/', { replace: true });
-    } else {
-      navigate(`/post/${data.id}`, { replace: true });
-    }
+    navigate(`/post/${data.id}`, { replace: true });
   }
 
   return (
@@ -304,10 +300,7 @@ export function CreatePostScreen() {
                   <span className="text-[11px] text-ink-muted">سريعة جداً في التحميل</span>
                 </div>
               )}
-              <div className="flex items-center gap-2 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>المنشورات التي تحتوي على صور تخضع لمراجعة قسم الإدارة قبل ظهورها للجميع.</span>
-              </div>
+              {/* تم إيقاف مراجعة الإدارة مؤقتاً: تنشر الصور مباشرة */}
             </div>
           ) : (
             <label
