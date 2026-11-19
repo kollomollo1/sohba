@@ -389,7 +389,7 @@ revoke execute on function public.demo_post_text(integer, text) from public, ano
 grant execute on function public.demo_post_text(integer, text) to service_role;
 
 -- ============================================================================
--- 2. schedule_next_demo_batch(): Random 5-15 min gap & 0 duplicates per 100 posts
+-- 2. schedule_next_demo_batch(): Random 5-15 min gap, 0 duplicates & Shuffled Order
 -- ============================================================================
 
 create or replace function public.schedule_next_demo_batch()
@@ -439,8 +439,10 @@ begin
 
   v_batch_num := v_total_published / 100;
 
-  -- 5. Schedule 100 demo accounts with 4:1 men to women pattern
-  --    Using disjoint sets per batch guaranteeing 0 duplicates in any consecutive 100 posts
+  -- 5. Schedule 100 demo accounts:
+  --    - Completely randomized / non-sequential post selection within the slice
+  --    - Shuffled accounts assignment so different accounts post each time
+  --    - Disjoint 80/20 slices guaranteeing 0 duplicates in any 100 consecutive posts
   for v_account in
     with active_accounts as (
       select
@@ -455,21 +457,37 @@ begin
         and (m.access_suspended_until is null or m.access_suspended_until <= now())
         and (m.posting_suspended_until is null or m.posting_suspended_until <= now())
     ),
+    males_raw as (
+      select
+        id,
+        demo_gender,
+        row_number() over (order by random())::integer - 1 as m_idx
+      from active_accounts
+      where demo_gender = 'male'
+    ),
     males as (
       select
         id,
         demo_gender,
-        row_number() over (order by username, id)::integer - 1 as m_idx
+        m_idx,
+        row_number() over (order by random())::integer - 1 as m_post_offset
+      from males_raw
+    ),
+    females_raw as (
+      select
+        id,
+        demo_gender,
+        row_number() over (order by random())::integer - 1 as f_idx
       from active_accounts
-      where demo_gender = 'male'
+      where demo_gender = 'female'
     ),
     females as (
       select
         id,
         demo_gender,
-        row_number() over (order by username, id)::integer - 1 as f_idx
-      from active_accounts
-      where demo_gender = 'female'
+        f_idx,
+        row_number() over (order by random())::integer - 1 as f_post_offset
+      from females_raw
     ),
     ordered_slots as (
       -- 4 men for every 1 woman:
@@ -477,34 +495,36 @@ begin
       select
         id,
         demo_gender,
-        m_idx as gender_index,
+        m_post_offset as post_offset,
         ((m_idx / 4) * 5 + (m_idx % 4))::integer as slot_rank
       from males
       union all
       select
         id,
         demo_gender,
-        f_idx as gender_index,
+        f_post_offset as post_offset,
         (f_idx * 5 + 4)::integer as slot_rank
       from females
     )
     select
       id,
       demo_gender,
-      gender_index,
+      post_offset,
       row_number() over (order by slot_rank, id)::integer - 1 as account_index
     from ordered_slots
     order by slot_rank, id
   loop
     v_gender := v_account.demo_gender;
 
-    -- Strict cycling:
-    -- Each batch takes a fresh set of 80 male posts and 20 female posts
-    -- Ensures ZERO duplicate posts within any 100 consecutive posts
+    -- Shuffled & Non-sequential rotation:
+    -- Each batch takes a fresh set of 80 male posts and 20 female posts,
+    -- mapped through post_offset (a randomized permutation of 0..79 and 0..19),
+    -- ensuring posts are published in random non-sequential order,
+    -- while still guaranteeing ZERO duplicate posts in any 100 consecutive posts!
     if v_gender = 'female' then
-      v_post_index := ((v_batch_num * 20 + v_account.gender_index) % 60) + 1;
+      v_post_index := ((v_batch_num * 20 + v_account.post_offset) % 60) + 1;
     else
-      v_post_index := ((v_batch_num * 80 + v_account.gender_index) % 240) + 1;
+      v_post_index := ((v_batch_num * 80 + v_account.post_offset) % 240) + 1;
     end if;
 
     v_body := public.demo_post_text(v_post_index, v_gender);
