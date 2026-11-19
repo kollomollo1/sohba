@@ -152,7 +152,7 @@ function Shell() {
       void supabase.rpc('delete_expired_posts');
     }, 5 * 60 * 1000);
 
-    // Publish due scheduled demo post on startup and every 30 seconds (1-minute schedule)
+    // Publish due scheduled demo post on startup and every 30 seconds (random 5-15 min schedule)
     void supabase.rpc('publish_due_demo_post');
     const demoInterval = window.setInterval(() => {
       void supabase.rpc('publish_due_demo_post');

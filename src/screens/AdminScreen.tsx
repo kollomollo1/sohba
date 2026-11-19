@@ -712,7 +712,7 @@ export function AdminScreen() {
               </div>
             )}
             {demoFeedback && <p className="rounded-xl bg-primary-50 px-3 py-2 text-sm text-primary">{demoFeedback}</p>}
-            <p className="text-xs text-ink-muted">عدد الحسابات: {demoUsers.length} · تُوزع المنشورات على اليوم، وينشر Supabase Cron منشورًا واحدًا مستحقًا كل دقيقة.</p>
+            <p className="text-xs text-ink-muted">عدد الحسابات: {demoUsers.length} · تُوزع المنشورات عشوائياً بمعدل منشور كل 5 إلى 15 دقيقة (دون أي تكرار عبر الـ 100 منشور بالتتابع).</p>
           </div>
           <div className="space-y-2">
             {demoUsers.map((demo) => <article key={demo.user_id} className="card flex items-center gap-3">
